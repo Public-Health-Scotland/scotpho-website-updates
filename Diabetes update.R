@@ -2,8 +2,8 @@
 # It looks to the last 10 years both for admissions and for deaths.
 
 # Part 1 - Population files
-# Part 2 - Create basefile for hospital stats.
-# Part 3 - Create basefile for death stats.
+# Part 2 - Hospital admissions data
+# Part 3 - Deaths data
 
 ###############################################.
 ## Packages/Filepaths ----
@@ -77,10 +77,10 @@ population <- readRDS(paste0(lookups, "CA_pop_allages_SR.rds")) %>%
   )) %>% group_by(year, sex_grp, age_grp, age_grp2) %>% #aggregating
   summarize_at(c("denominator", "epop"), sum, na.rm = TRUE) %>% ungroup()
 
-saveRDS(population, "./Data/diabetes_population.rds")
+saveRDS(population, paste0(output, "diabetes_population.rds"))
 
 ###############################################.
-## Part 2 - Create basefile for hospital stats ----
+## Part 2 - Hospital admissions data ----
 ###############################################.
 # This query extracts data for all episodes of patients for which in any ocassion there was a diagnosis of diabetes.
 # It exclude patients with no sex recorded (8 cases) and non-scottish patients.
@@ -98,23 +98,15 @@ admissions_diab <- tbl_df(dbGetQuery(channel, statement=
           ELSE extract(year from discharge_date) -1 END) as year, 
      max(CASE WHEN regexp_like(main_condition, 'E1[01234]') then 1 else 0 end) diab_main, 
      max(CASE WHEN regexp_like(main_condition, 'E101|E111|E121|E131|E141') then 1 else 0 end) diab_keto, 
-     max(CASE WHEN regexp_like(main_condition, 'E1[01234]')  
-            or regexp_like(other_condition_1, 'E1[01234]') 
-            or regexp_like(other_condition_2, 'E1[01234]') 
-            or regexp_like(other_condition_3, 'E1[01234]') 
-            or regexp_like(other_condition_4, 'E1[01234]') 
-            or regexp_like(other_condition_5, 'E1[01234]')  
+     max(CASE WHEN regexp_like(main_condition || other_condition_1 || other_condition_2
+            || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]')
           THEN 1 ELSE 0 END) diabetes 
   FROM ANALYSIS.SMR01_PI 
   WHERE discharge_date between '1 April 2007' and '31 March 2018'
      and hbtreat_currentdate is not null 
      and sex in ('1','2') 
-     and (regexp_like(main_condition, 'E1[01234]') 
-        or regexp_like(other_condition_1, 'E1[01234]') 
-        or regexp_like(other_condition_2, 'E1[01234]') 
-        or regexp_like(other_condition_3, 'E1[01234]') 
-        or regexp_like(other_condition_4, 'E1[01234]') 
-        or regexp_like(other_condition_5, 'E1[01234]') ) 
+     and regexp_like(main_condition || other_condition_1 || other_condition_2
+            || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]') 
    GROUP BY link_no | | cis_marker ")) %>% 
   setNames(tolower(names(.)))  #variables to lower case
 
@@ -127,8 +119,8 @@ admissions_diab <- admissions_diab %>% recode_age() %>%
   group_by(year, sex_grp, age_grp, age_grp2) %>% 
   summarize_at(c("diabetes", "diab_main", "diab_keto"), sum, na.rm = T)
 
-saveRDS(admissions_diab, "./Data/diabetes_admissions_basefile.rds")
-admissions_diab <- readRDS( "./Data/diabetes_admissions_basefile.rds")
+saveRDS(admissions_diab, paste0(output, "diabetes_admissions_basefile.rds"))
+admissions_diab<- readRDS(paste0(output, "diabetes_admissions_basefile.rds"))
 
 ###############################################.
 # Creating file for Secondary care section chart 1.
@@ -162,7 +154,7 @@ seccare_c1 <- seccare_c1 %>%
   make_year_labels() %>%  # Relabeling years
   select(class2, class1, numerator, rate)
 
-write_csv(seccare_c1, './Data/diabetes_secondarycare_chart1.csv')
+write_csv(seccare_c1, paste0(output, "diabetes_secondarycare_chart1.csv"))
 
 ###############################################.
 # Creating file for Secondary care section chart 2.
@@ -193,10 +185,10 @@ seccare_c2 <- seccare_c2 %>%
   make_year_labels() %>%  # Relabeling years
   select(class2, class1, numerator, rate)
 
-write_csv(seccare_c2, './Data/diabetes_secondarycare_chart2.csv')
+write_csv(seccare_c2, paste0(output, "diabetes_secondarycare_chart2.csv"))
 
 ###############################################.
-## Part 3 - Create basefile for death stats ----
+## Part 3 - Deaths data ----
 ###############################################.
 # Scottish resident deaths due to diabetes (any position) and valid sex recorded. 
 # Creating variable with ones where it was the main cause. 
@@ -208,17 +200,11 @@ deaths_diab <- tbl_df(
   WHERE year_of_registration between 2007 and 2017 
     and country_of_residence= 'XS' 
     and sex <> 9 
-    and (regexp_like(primary_cause_of_death, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_0, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_1, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_2, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_3, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_4, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_5, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_6, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_7, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_8, 'E1[01234]') 
-        or regexp_like(cause_of_death_code_9, 'E1[01234]')) 
+    and regexp_like(primary_cause_of_death || cause_of_death_code_0 ||
+      cause_of_death_code_1 ||  cause_of_death_code_2 ||  cause_of_death_code_3 || 
+      cause_of_death_code_4 ||  cause_of_death_code_5 ||  cause_of_death_code_6 || 
+      cause_of_death_code_7 ||  cause_of_death_code_8 ||  cause_of_death_code_9,
+      'E1[01234]') 
   GROUP BY year_of_registration, sex, age ")) %>%
   setNames(tolower(names(.)))  #variables to lower case
   
@@ -251,6 +237,6 @@ deaths_diab <- deaths_diab %>%
                             type == 'all_diag' & sex_grp == '1' ~ 'Male - contributory')) %>% 
   rename(class2 = year) %>% select(class2, class1, numerator, rate)
 
-write_csv(deaths_diab, './Data/diabetes_mortality_chart1.csv')
+write_csv(deaths_diab, paste0(output, "diabetes_mortality_chart1.csv"))
 
 ##END
