@@ -26,10 +26,7 @@ if (server_desktop == "server") {
 # To relabel years.
 make_year_labels <- function(dataset) {
   dataset %>% 
-    mutate(class2 = recode(year, "2006"="2006/07", "2007"="2007/08", "2008"="2008/09",
-           "2009"="2009/10", "2010"="2010/11", "2011"="2011/12", "2012"="2012/13", 
-           "2013"="2013/14", "2014"="2014/15", "2015"="2015/16", "2016"="2016/17",
-           "2017" = "2017/18"))
+    mutate(class2 = paste0(year, "/", substr(year+1, 3,4)))
 }
 
 # To recode age.
@@ -82,32 +79,35 @@ saveRDS(population, paste0(output, "diabetes_population.rds"))
 ###############################################.
 ## Part 2 - Hospital admissions data ----
 ###############################################.
+# SMRA login information
+channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA", uid=.rs.askForPassword("SMRA Username:"), 
+                                      pwd=.rs.askForPassword("SMRA Password:")))
+
 # This query extracts data for all episodes of patients for which in any ocassion there was a diagnosis of diabetes.
 # It exclude patients with no sex recorded (8 cases) and non-scottish patients.
 # It does creates variables to see if diabetes is in the diagnosis of the episode, if it is the main cause 
 # and if there is a diagnosis of ketoacidosis. It should take ~ 5 mins to run.
 # Create one record per CIS selecting the admission date and personal/geographical details from 
 # the first episode of the CIS, the latest discharge date of the CIS, ensuring all required diagnoses are captured.
-
-# SMRA login information
-channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA", uid=.rs.askForPassword("SMRA Username:"), 
-                                      pwd=.rs.askForPassword("SMRA Password:")))
 admissions_diab <- tbl_df(dbGetQuery(channel, statement=
- "SELECT distinct link_no | | cis_marker CIS, max(age_in_years) age, max(sex) sex_grp, 
-     max(CASE WHEN extract(month from discharge_date) > 3 THEN extract(year from discharge_date) 
-          ELSE extract(year from discharge_date) -1 END) as year, 
-     max(CASE WHEN regexp_like(main_condition, 'E1[01234]') then 1 else 0 end) diab_main, 
-     max(CASE WHEN regexp_like(main_condition, 'E101|E111|E121|E131|E141') then 1 else 0 end) diab_keto, 
-     max(CASE WHEN regexp_like(main_condition || other_condition_1 || other_condition_2
+ "SELECT sum(z.diab_main) diab_main, sum(z.diab_keto) diab_keto, sum(z.diabetes) diabetes,
+    z.year, z.age, z.sex_grp
+  FROM (SELECT distinct link_no | | cis_marker CIS, max(age_in_years) age, max(sex) sex_grp, 
+      max(CASE WHEN extract(month from discharge_date) > 3 THEN extract(year from discharge_date) 
+            ELSE extract(year from discharge_date) -1 END) as year, 
+      max(CASE WHEN regexp_like(main_condition, 'E1[01234]') then 1 else 0 end) diab_main, 
+      max(CASE WHEN regexp_like(main_condition, 'E101|E111|E121|E131|E141') then 1 else 0 end) diab_keto, 
+      max(CASE WHEN regexp_like(main_condition || other_condition_1 || other_condition_2
             || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]')
-          THEN 1 ELSE 0 END) diabetes 
-  FROM ANALYSIS.SMR01_PI 
-  WHERE discharge_date between '1 April 2007' and '31 March 2018'
-     and hbtreat_currentdate is not null 
-     and sex in ('1','2') 
-     and regexp_like(main_condition || other_condition_1 || other_condition_2
+            THEN 1 ELSE 0 END) diabetes 
+    FROM ANALYSIS.SMR01_PI 
+    WHERE discharge_date between '1 April 2007' and '31 March 2018'
+      and hbtreat_currentdate is not null 
+      and sex in ('1','2') 
+      and regexp_like(main_condition || other_condition_1 || other_condition_2
             || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]') 
-   GROUP BY link_no | | cis_marker ")) %>% 
+    GROUP BY link_no | | cis_marker) z  
+ GROUP BY z.year, z.age, z.sex_grp")) %>% 
   setNames(tolower(names(.)))  #variables to lower case
 
 #Age groups and aggregating by sex, year and age group
@@ -150,7 +150,7 @@ seccare_c1 <- seccare_c1 %>%
       type == 'diab_main' & sex_grp == '1' ~ 'Male - main diagnosis',
       type == 'diabetes' & sex_grp == 'All' ~ 'All - any diagnosis',
       type == 'diabetes' & sex_grp == '2' ~ 'Female - any diagnosis',
-      type == 'diabetes' & sex_grp == '1' ~ 'Male - any diagnosis'))%>% 
+      type == 'diabetes' & sex_grp == '1' ~ 'Male - any diagnosis')) %>% 
   make_year_labels() %>%  # Relabeling years
   select(class2, class1, numerator, rate)
 
@@ -182,8 +182,7 @@ seccare_c2 <- seccare_c2 %>%
                             age_grp2 == '25-44' & sex_grp == '1' ~ 'Male - 25-44',
                             age_grp2 == '45-64' & sex_grp == '1' ~ 'Male - 45-64',
                             age_grp2 == '65+' & sex_grp == '1' ~ 'Male - 65+')) %>% 
-  make_year_labels() %>%  # Relabeling years
-  select(class2, class1, numerator, rate)
+  make_year_labels() %>% select(class2, class1, numerator, rate)
 
 write_csv(seccare_c2, paste0(output, "diabetes_secondarycare_chart2.csv"))
 
