@@ -1,4 +1,4 @@
-# Code to analyse asthma incidence and asthma deaths data from SMRA for publication on scotpho website
+# Code to analyse asthma incidence and asthma deaths data from SMRA for publication on scotPHO website
 # current analysis for september 2019 website update
 
 # load packages required to run all commands

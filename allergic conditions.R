@@ -131,4 +131,4 @@ allergy_scotland <- allergy_scotland %>%
 allergy_scotland_chart <- allergy_scotland %>% select(year, type, numerator, rate) %>% 
   mutate(year = paste0(allergy_scotland$year, "/", substr(allergy_scotland$year+1, 3,4)))
 
-write.csv(allergy_scotland, file=paste0(data_folder, "allergy_scotland_chart.csv"))
+write.csv(allergy_scotland_chart, file=paste0(data_folder, "allergy_scotland_chart.csv"))
