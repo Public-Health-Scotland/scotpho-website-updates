@@ -1,6 +1,12 @@
 # Code to analyse allergy incidence data from SMRA for publication on scotpho website
-# current analysis for september 2019 website update
 
+# Part 1 - Extract data from SMRA on allergy admissions
+# Part 2 - Extract data from SMRA on asthma admissions
+# Part 3 - Calculate incidence rates and export files
+
+###############################################.
+# Functions/packages/filepaths ----
+###############################################.
 # load packages required to run all commands
 library(tidyr)#converts long to wide format
 library(dplyr)
@@ -37,34 +43,41 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
                                       pwd=.rs.askForPassword("SMRA Password:")))
 
 ###############################################.
-## Part 1 - Extract data from SMRA ----
+## Part 1 - Extract data from SMRA on allergy admissions ----
 ###############################################.
-
-#SQL query select one row per admission, financial year. Excluding invalid sex
+# SQL query select one row per admission, financial year. Excluding invalid sex
+# Only Scottish residents. It creates a variable for each category of allergy
 data_allergy <- tbl_df(dbGetQuery(channel, statement=
   "SELECT distinct link_no linkNo, cis_marker CIS,  max(age_in_years) age, max(sex) sex,
-    max(CASE WHEN extract(month from discharge_date) > 3 THEN extract(year from discharge_date)
-         ELSE extract(year from discharge_date) -1 END) as year,
-    max(case when substr(main_condition,0,4) = 'H101' then 1 else 0 end) conjunc,
-    max(case when substr(main_condition,0,3) = any('J30','J31') then 1 else 0 end) rhinitis,
-    max(case when substr(main_condition,0,3) = 'J45' or substr(main_condition,0,4) = any('J450','J46X') then 1 else 0 end) asthma,
-    max(case when substr(main_condition,0,4) = any('K522','L272','T781') then 1 else 0 end) food_allergy,
-    max(case when substr(main_condition,0,3) = any('L20','L23') then 1 else 0 end) dermatitis,
-    max(case when substr(main_condition,0,3) = 'L50' then 1 else 0 end) urticaria,
-    max(case when substr(main_condition,0,4) = 'T634' then 1 else 0 end) tox_ven,
-    max(case when substr(main_condition,0,4) = any('T780','T782','T805','T886') then 1 else 0 end) anaphylaxis,
-    max(case when substr(main_condition,0,4) = 'T783' then 1 else 0 end) angio_oedema,
-    Max(case when substr(main_condition,0,3) = 'Z88' or substr(main_condition,0,4) = 'T784' then 1 else 0 end) allergy_unspec,
-    max(case when substr(main_condition,0,4) = 'J450' then 1 else 0 end) predom_asthma,
-    max(case when substr(main_condition,0,3) = any('L20','L23','L50','Z88') or substr(main_condition,0,4) = any('K522','L272','T781','T634','T780','T782','T805','T886','T783','T784') then 1 else 0 end) allergy
-      FROM ANALYSIS.SMR01_PI 
-    where discharge_date between '1 April 2008' and '31 March 2019'
-      and hbtreat_currentdate is not null
+          max(CASE WHEN extract(month from discharge_date) > 3 
+              THEN extract(year from discharge_date)
+              ELSE extract(year from discharge_date) -1 END) as year,
+          max(case when substr(main_condition,0,4) = 'H101' then 1 else 0 end) conjunc,
+          max(case when substr(main_condition,0,3) = any('J30','J31') then 1 else 0 end) rhinitis,
+          max(case when substr(main_condition,0,3) = 'J45' 
+              or substr(main_condition,0,4) = any('J450','J46X') THEN 1 else 0 end) asthma,
+          max(case when substr(main_condition,0,4) = any('K522','L272','T781') 
+              THEN 1 else 0 end) food_allergy,
+          max(case when substr(main_condition,0,3) = any('L20','L23') then 1 else 0 end) dermatitis,
+          max(case when substr(main_condition,0,3) = 'L50' then 1 else 0 end) urticaria,
+          max(case when substr(main_condition,0,4) = 'T634' then 1 else 0 end) tox_ven,
+          max(case when substr(main_condition,0,4) = any('T780','T782','T805','T886') 
+              THEN 1 else 0 end) anaphylaxis,
+          max(case when substr(main_condition,0,4) = 'T783' then 1 else 0 end) angio_oedema,
+          max(case when substr(main_condition,0,3) = 'Z88' 
+              OR substr(main_condition,0,4) = 'T784' then 1 else 0 end) allergy_unspec,
+          max(case when substr(main_condition,0,4) = 'J450' then 1 else 0 end) predom_asthma,
+          max(case when substr(main_condition,0,3) = any('L20','L23','L50','Z88') 
+              OR substr(main_condition,0,4) = any('K522','L272','T781','T634','T780','T782','T805','T886','T783','T784') 
+            THEN 1 else 0 end) allergy
+    FROM ANALYSIS.SMR01_PI 
+    WHERE discharge_date between '1 April 2008' and '31 March 2019'
+      AND hbtreat_currentdate is not null
       AND substr(hbtreat_currentdate,0,4) != 'S082'
-      and sex in ('1','2')
-      and (substr(main_condition,0,3) = any ('J30','J31','J45','L20','L23','L50','Z88')
-         or substr(main_condition,0,4) = any ('H101','J450','J46X','K522','L272','T781','T634','T780','T782','T805','T886','T783','T784'))
-    group by link_no, cis_marker")) %>%
+      AND sex in ('1','2')
+      AND (substr(main_condition,0,3) = any ('J30','J31','J45','L20','L23','L50','Z88')
+         OR substr(main_condition,0,4) = any ('H101','J450','J46X','K522','L272','T781','T634','T780','T782','T805','T886','T783','T784'))
+    GROUP BY link_no, cis_marker")) %>%
 setNames(tolower(names(.))) #variables to lower case
 
 # recode age groups
@@ -109,11 +122,11 @@ allergy_scotland <- full_join(allergy_scotland, scottish_population, c("year", "
 allergy_scotland <- allergy_scotland %>% gather("type", "numerator", -c(age_grp, sex, year, denominator))
 
 allergy_scotland <- allergy_scotland %>%
-    mutate(epop = recode(as.character(age_grp), 
+    mutate(epop = recode(as.character(age_grp), #EASR age group pops 
                          "1"=5000, "2"=5500, "3"=5500, "4"=5500, "5"=6000, 
                          "6"=6000, "7"= 6500, "8"=7000, "9"=7000, "10"=7000,
                          "11"=7000, "12"=6500, "13"=6000, "14"=5500, "15"=5000,
-                         "16"= 4000, "17"=2500, "18"=1500, "19"=1000)) %>% #EASR age group pops 
+                         "16"= 4000, "17"=2500, "18"=1500, "19"=1000)) %>% 
     mutate(easr_first = numerator*epop/denominator) #easr population
   
   # aggregating by year, code and time
@@ -131,4 +144,6 @@ allergy_scotland <- allergy_scotland %>%
 allergy_scotland_chart <- allergy_scotland %>% select(year, type, numerator, rate) %>% 
   mutate(year = paste0(allergy_scotland$year, "/", substr(allergy_scotland$year+1, 3,4)))
 
-write.csv(allergy_scotland_chart, file=paste0(data_folder, "allergy_scotland_chart.csv"))
+write_csv(allergy_scotland_chart, paste0(data_folder, "allergy_scotland_chart.csv"))
+
+## END
