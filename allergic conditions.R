@@ -142,8 +142,12 @@ allergy_scotland <- allergy_scotland %>%
 # saving in format for website chart update (year, rate) csv file
 # need to compile files so that the "class1" is the type of allergy
 allergy_scotland_chart <- allergy_scotland %>% select(year, type, numerator, rate) %>% 
-  mutate(year = paste0(allergy_scotland$year, "/", substr(allergy_scotland$year+1, 3,4)))
+  mutate(year = paste0(allergy_scotland$year, "/", substr(allergy_scotland$year+1, 3,4)),
+         type = recode(type, "allergy" = "One or more allergic conditions", "allergy_unspec" = "Unspecified allergy", "anaphylaxis" = "Anaphylaxis", 
+                       "angio_oedema" = "Angioneurotic Oedema", "asthma" = "Asthma", "conjunc" = "Conjuctivitis", "dermatitis" = "Dermatitis", 
+                       "food_allergy" = "Food allergy", "predom_asthma" = "Predominantly asthma", 
+                       "rhinitis" = "Rhinitis", "total" = "All allergies", "tox_ven" = "Toxic effect due to venom", "urticaria" = "Urticaria"))
 
-write_csv(allergy_scotland_chart, paste0(data_folder, "allergy_scotland_chart.csv"))
+saveRDS(allergy_scotland_chart, paste0(data_folder, "allergy_scotland_chart.rds"))
 
 ## END
