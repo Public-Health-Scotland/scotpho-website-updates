@@ -13,6 +13,7 @@ library(tidyr)
 library(dplyr)
 library(readr) 
 library(odbc) 
+library(plotly)
 
 # file path for saved files
 data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/sept2019_update/"
@@ -213,6 +214,34 @@ create_chart_data(dataset = data_asthma_scotland, epop_total = 200000,
                   sex = F, filename = "asthma_scotland_all_chart")
 create_chart_data(dataset = data_underten, epop_total = 10500, filename = "asthma_underten_chart")
 create_chart_data(dataset = data_tenplus, epop_total = 89500, filename = "asthma_tenplus_chart")
+
+###############################################.
+## Part 4 - create chart for publication summary ----
+###############################################.
+
+data_plot <- read.csv("//PHI_conf/ScotPHO/Website/Charts/Plotly/data/Asthma/asthma_seccare_age_sex_chart2PRA.csv",
+                      na.strings=c(""," ","NA")) #Reading data
+
+#Palette for those with two categories per sex
+pal2bysex <- c('#08519c','#bdd7e7', '#a6611a', '#dfc27d')
+
+#Plotting
+plot_asthma <- plot_ly(data=data_plot, x=~class2, y = ~round(measure,1),
+                       type = 'scatter', mode = 'lines',
+                       color=~class1, colors = pal2bysex,
+                       width = 650, height = 500) %>%
+  #Layout
+  layout(yaxis = list(title = "Age-sex standarised rate per 100,000", rangemode="tozero", 
+                      titlefont = list(size=21), tickfont =list(size=19)),
+         xaxis = list(title = "Financial year", tickfont =list(size=19), 
+                      titlefont = list(size=21), dtick = 3), #axis parameter
+         margin=list(  pad = 4 ), #margin-paddings
+         legend = list(orientation = 'h',  y = 1.18, font = list(size=19))) %>%   #anchoring the legend to the middle of the y-axis so that text appears halway down the graph
+  config(displayModeBar = FALSE, displaylogo = F, editable =F) # taking out plotly logo and collaborate button
+
+plot_asthma
+
+export(p =  plot_asthma, file = "asthma_pub_summary.png", zoom = 4)
 
 ##END
 
