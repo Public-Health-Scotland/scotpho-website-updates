@@ -236,7 +236,7 @@ plot_asthma <- plot_ly(data=data_plot, x=~class2, y = ~round(measure,1),
          xaxis = list(title = "Financial year", tickfont =list(size=19), 
                       titlefont = list(size=21), dtick = 3), #axis parameter
          margin=list(  pad = 4 ), #margin-paddings
-         legend = list(orientation = 'h',  y = 1.18, font = list(size=19))) %>%   #anchoring the legend to the middle of the y-axis so that text appears halway down the graph
+         legend = list(orientation = 'h',  y = 1.18, font = list(size=19))) %>%   
   config(displayModeBar = FALSE, displaylogo = F, editable =F) # taking out plotly logo and collaborate button
 
 plot_asthma
