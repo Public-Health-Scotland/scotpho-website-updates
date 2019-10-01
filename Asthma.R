@@ -65,10 +65,7 @@ create_chart_data <- function(dataset, epop_total, filename, sex = T) {
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
                                       uid=.rs.askForPassword("SMRA Username:"), 
-                                      pwd=.rs.askForPassword("SMRA Password:"),
-                                      port = "1527",
-                                      host = "nssstats01.csa.scot.nhs.uk",
-                                      SVC = "SMRA.nss.scot.nhs.uk"
+                                      pwd=.rs.askForPassword("SMRA Password:")
 ))
 
 ###############################################.
