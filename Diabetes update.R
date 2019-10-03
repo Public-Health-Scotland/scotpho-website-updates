@@ -10,12 +10,12 @@
 ###############################################.
 lapply(c("dplyr", "readr", "reshape2", "odbc"), library, character.only = TRUE)
 
-server_desktop <- "server" # change depending if you are using R server or R desktop
-if (server_desktop == "server") {
+# change depending if you are using R server or R desktop
+if (sessionInfo()$platform %in% c("x86_64-redhat-linux-gnu (64-bit)", "x86_64-pc-linux-gnu (64-bit)")) {
   output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/"
   lookups <- "/PHI_conf/ScotPHO/Profiles/Data/Lookups/Population/"
   
-} else if (server_desktop == "desktop") {
+} else {
   output <- "//stats/ScotPHO/Website/Topics/Diabetes/Data/"
   lookups <- "//stats/ScotPHO/Profiles/Data/Lookups/Population/"
 }
@@ -25,8 +25,7 @@ if (server_desktop == "server") {
 ###############################################.
 # To relabel years.
 make_year_labels <- function(dataset) {
-  dataset %>% 
-    mutate(class2 = paste0(year, "/", substr(year+1, 3,4)))
+  dataset %>% mutate(class2 = paste0(year, "/", substr(year+1, 3,4)))
 }
 
 # To recode age.
@@ -42,7 +41,7 @@ recode_age <- function(dataset) {
 
 # To calculate EASRs
 calculate_easr <- function(dataset, numer_var, cats) {
-  dataset %>% rename_(numerator = numer_var) %>% 
+  dataset %>% rename(numerator = {{numer_var}}) %>% 
     mutate(easr = numerator*epop/denominator,
       var_dsr = (numerator*epop^2)/denominator^2) %>% #calculate variance
     group_by_at(c(cats, "year")) %>% #aggregating
@@ -70,17 +69,17 @@ population <- readRDS(paste0(lookups, "CA_pop_allages_SR.rds")) %>%
       age_grp2 = case_when(between(age_grp, 1, 5) ~ "<25",
                           between(age_grp, 6, 9) ~ "25-44",
                           between(age_grp, 10, 13) ~ "45-64",
-                          between(age_grp, 14, 19) ~ "65+"
-  )) %>% group_by(year, sex_grp, age_grp, age_grp2) %>% #aggregating
+                          between(age_grp, 14, 19) ~ "65+"),
+  sex_grp = as.character(sex_grp)) %>% 
+  group_by(year, sex_grp, age_grp, age_grp2) %>% #aggregating
   summarize_at(c("denominator", "epop"), sum, na.rm = TRUE) %>% ungroup()
-
-saveRDS(population, paste0(output, "diabetes_population.rds"))
 
 ###############################################.
 ## Part 2 - Hospital admissions data ----
 ###############################################.
 # SMRA login information
-channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA", uid=.rs.askForPassword("SMRA Username:"), 
+channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA", 
+                                      uid=.rs.askForPassword("SMRA Username:"), 
                                       pwd=.rs.askForPassword("SMRA Password:")))
 
 # This query extracts data for all episodes of patients for which in any ocassion there was a diagnosis of diabetes.
@@ -101,7 +100,7 @@ admissions_diab <- tbl_df(dbGetQuery(channel, statement=
             || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]')
             THEN 1 ELSE 0 END) diabetes 
     FROM ANALYSIS.SMR01_PI 
-    WHERE discharge_date between '1 April 2007' and '31 March 2018'
+    WHERE discharge_date between '1 April 2008' and '31 March 2019'
       and hbtreat_currentdate is not null 
       and sex in ('1','2') 
       and regexp_like(main_condition || other_condition_1 || other_condition_2
@@ -120,7 +119,7 @@ admissions_diab <- admissions_diab %>% recode_age() %>%
   summarize_at(c("diabetes", "diab_main", "diab_keto"), sum, na.rm = T)
 
 saveRDS(admissions_diab, paste0(output, "diabetes_admissions_basefile.rds"))
-admissions_diab<- readRDS(paste0(output, "diabetes_admissions_basefile.rds"))
+admissions_diab <- readRDS(paste0(output, "diabetes_admissions_basefile.rds"))
 
 ###############################################.
 # Creating file for Secondary care section chart 1.
@@ -194,12 +193,12 @@ write_csv(seccare_c2, paste0(output, "diabetes_secondarycare_chart2.csv"))
 deaths_diab <- tbl_df(
   dbGetQuery(channel, statement=
   "SELECT year_of_registration year, sex sex_grp, age, count(*) all_diag,  
-    sum(case when regexp_like(primary_cause_of_death, 'E1[01234]') then 1 else 0 end) main_diag 
+    sum(case when regexp_like(UNDERLYING_CAUSE_OF_DEATH, 'E1[01234]') then 1 else 0 end) main_diag 
   FROM ANALYSIS.GRO_DEATHS_C 
-  WHERE year_of_registration between 2007 and 2017 
+  WHERE year_of_registration between 2008 and 2018 
     and country_of_residence= 'XS' 
     and sex <> 9 
-    and regexp_like(primary_cause_of_death || cause_of_death_code_0 ||
+    and regexp_like(UNDERLYING_CAUSE_OF_DEATH || cause_of_death_code_0 ||
       cause_of_death_code_1 ||  cause_of_death_code_2 ||  cause_of_death_code_3 || 
       cause_of_death_code_4 ||  cause_of_death_code_5 ||  cause_of_death_code_6 || 
       cause_of_death_code_7 ||  cause_of_death_code_8 ||  cause_of_death_code_9,
