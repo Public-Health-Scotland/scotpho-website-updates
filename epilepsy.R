@@ -59,6 +59,7 @@ create_chart_data <- function(dataset, epop_total, filename, sex = T) {
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
                                       uid=.rs.askForPassword("SMRA Username:"), 
                                       pwd=.rs.askForPassword("SMRA Password:")))
+                                      
 
 ###############################################.
 # Part 1 - deaths file - data from SMRA ----
@@ -73,6 +74,7 @@ epilepsy_deaths <- tbl_df(dbGetQuery(channel, statement=
       FROM ANALYSIS.GRO_DEATHS_C
       WHERE date_of_registration between '1 January 1974' and '31 December 2018'
       AND country_of_residence ='XS'
+      AND sex in ('1','2')
       AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('G40','G41', '345') 
       or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-345')")) %>%
   setNames(tolower(names(.)))  # variables to lower case
@@ -109,23 +111,28 @@ write.csv(epilepsy_deaths_chart, file=paste0(data_folder, "epilepsy_deaths_chart
 ###############################################.
 # SQL query extracts data one row per admission with an epilepsy diagnosis, by financial year. 
 # Excluding unvalid sex cases and non-scottish
-data_epilepsy <- tbl_df(dbGetQuery(channel, statement=
-      "SELECT distinct link_no linkNo, cis_marker CIS, max(age_in_years) age, min(DR_POSTCODE) pc7,
-                min(ADMISSION_DATE) doadm, max(sex) sex, 
-                max(CASE WHEN extract(month from discharge_date) > 3 
-                    THEN extract(year from discharge_date)
-                    ELSE extract(year from discharge_date) -1 END) as year
-              FROM ANALYSIS.SMR01_PI
-              WHERE discharge_date between '1 April 2004' and '31 March 2019' 
-              AND hbtreat_currentdate is not null
-              AND substr(hbtreat_currentdate,0,4) != 'S082'
-              AND sex in ('1','2')
+query_sql <- function(table) {
+  paste0("SELECT distinct link_no linkNo, cis_marker CIS, max(age_in_years) age, min(ADMISSION_DATE) doadm, 
+    max(sex) sex, max(CASE WHEN extract(month from admission_date) > 3 
+         THEN extract(year from admission_date)
+         ELSE extract(year from admission_date) -1 END) as year
+         FROM ", table,
+         " WHERE admission_date between '1 April 2004' and '31 March 2019' 
+         AND hbtreat_currentdate is not null
+         AND substr(hbtreat_currentdate,0,4) != 'S082'
+         AND sex in ('1','2')
               AND (substr(main_condition,0,3) = any('G40','G41', '345') 
                   OR substr(main_condition,0,4) = '-345')
-         GROUP BY link_no, cis_marker")) %>% 
-  setNames(tolower(names(.)))  #variables to lower case
+         GROUP BY link_no, cis_marker")
+}
 
-data_epilepsy <- data_epilepsy %>% mutate(age_grp = case_when( 
+data_epilepsy <- rbind(tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR01_PI"))),
+                   tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR01_HISTORIC"))) ) %>%
+  setNames(tolower(names(.)))  # variables to lower case
+
+deaths_admissions <- bind_rows(epilepsy_deaths, data_epilepsy)
+
+deaths_admissions <- deaths_admissions %>% mutate(age_grp = case_when( 
   age < 5 ~ 1, age > 4 & age <10 ~ 2, age > 9 & age <15 ~ 3, age > 14 & age <20 ~ 4,
   age > 19 & age <25 ~ 5, age > 24 & age <30 ~ 6, age > 29 & age <35 ~ 7, 
   age > 34 & age <40 ~ 8, age > 39 & age <45 ~ 9, age > 44 & age <50 ~ 10,
@@ -137,15 +144,15 @@ data_epilepsy <- data_epilepsy %>% mutate(age_grp = case_when(
   age_grp2 = case_when(age < 15 ~ 1, age > 14 & age < 55 ~ 2, age > 54 ~ 3, TRUE ~ as.numeric(age)
   ))
 
-# Bringing datazone info to exclude non-Scottish.
-postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2019_2.rds') %>% 
-  setNames(tolower(names(.))) %>%   #variables to lower case
-  select(pc7, datazone2011)
-
-data_epilepsy <- left_join(data_epilepsy, postcode_lookup, "pc7") %>% 
-  subset(!(is.na(datazone2011))) %>%  #select out non-scottish
-  mutate_if(is.character, factor) %>%  # converting variables into factors
-  select(-pc7, -datazone2011)
+deaths_admissions <- deaths_admissions %>%
+  arrange(linkno, doadm) %>% 
+  group_by(linkno) %>% 
+  # calculating difference between first admission and each one of them. Converting into years
+  mutate(diff_time = as.numeric(difftime(doadm, lag(doadm), units="days"))/365) %>%
+  # select first admission/death per person with no previous admission, within 10 years
+  filter(is.na(diff_time) | diff_time >= 10) %>%
+  ungroup() %>%
+  filter(year > 2001) #selecting years required
 
 ###############################################.
 # Part 3 - Calculate incidence rates and export files ----
@@ -171,15 +178,15 @@ scottish_population <- scottish_population %>% mutate(age_grp = case_when(
   summarise(pop =sum(pop)) %>% ungroup()
 
 # calculate European age sex standardised rate
-data_epilepsy_scotland <- data_epilepsy %>% group_by(age_grp, age_grp2, sex, year) %>% 
+deaths_admissions_scotland <- deaths_admissions %>% group_by(age_grp, age_grp2, sex, year) %>% 
   count() %>% ungroup() # calculate numerator
 
 # Joining data with population (denominator)
-data_epilepsy_scotland <- full_join(data_epilepsy_scotland, scottish_population, 
+deaths_admissions_scotland <- full_join(deaths_admissions_scotland, scottish_population, 
                                   c("year", "age_grp", "sex")) %>% 
   rename(numerator = n, denominator = pop) # numerator and denominator used for calculation
 
-data_epilepsy_scotland <- data_epilepsy_scotland %>% 
+deaths_admissions_scotland <- deaths_admissions_scotland %>% 
   mutate(epop = recode(as.character(age_grp), # EASR age group pops
                        "1"=5000, "2"=5500, "3"=5500, "4"=5500, "5"=6000, 
                        "6"=6000, "7"= 6500, "8"=7000, "9"=7000, "10"=7000,
@@ -187,10 +194,10 @@ data_epilepsy_scotland <- data_epilepsy_scotland %>%
                        "16"= 4000, "17"=2500, "18"=1500, "19"=1000)) 
 
 # Converting NA's to 0s
-data_epilepsy_scotland$numerator[is.na(data_epilepsy_scotland$numerator)] <- 0 
+deaths_admissions_scotland$numerator[is.na(deaths_admissions_scotland$numerator)] <- 0 
 
 # this section is for splitting ages under 10 and 10+ for males and females
-data_agegroups <- data_epilepsy_scotland %>% group_by(year, age_grp2, sex) %>% 
+data_agegroups <- deaths_admissions_scotland %>% group_by(year, age_grp2, sex) %>% 
   select(-age_grp) %>% 
   summarise_all(list(sum), na.rm =T) %>% rename(age_grp = age_grp2) %>% ungroup
 
@@ -201,7 +208,7 @@ data_fiftyfiveplus <- data_agegroups %>% filter(age_grp == 3) # 55+
 # run the create rates function for each cut
 # export in format for website chart update (year, sex, rate in csv file) and save
 
-all_epilepsy_chart <- create_chart_data(dataset = data_epilepsy_scotland, epop_total = 200000, filename = "epilepsy_scotland_all_chart")
+all_epilepsy_chart <- create_chart_data(dataset = deaths_admissions_scotland, epop_total = 200000, filename = "epilepsy_scotland_all_chart")
 
 underfifteen_epilepsy_chart <- create_chart_data(dataset = data_underfifteen, epop_total = 32000, filename = "epilepsy_underfifteen_chart")
 
