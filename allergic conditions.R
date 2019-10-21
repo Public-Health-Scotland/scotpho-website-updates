@@ -7,35 +7,11 @@
 ###############################################.
 # Functions/packages/filepaths ----
 ###############################################.
-# load packages required to run all commands
-library(tidyr)#converts long to wide format
-library(dplyr)
-library(readr) 
-library(odbc) #to connect databases
+# load packages and functions required to run all commands
+source("1.analysis_functions.R")
 
 # file path for saved files
 data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Allergy/sept2019_update/"
-
-# functions used in analysis
-create_rates <- function(dataset, epop_total) { #use function to calculate for each allergy later
-  dataset <- dataset %>%
-    mutate(epop = recode(as.character(age_grp), 
-                         "1"=5000, "2"=5500, "3"=5500, "4"=5500, "5"=6000, 
-                         "6"=6000, "7"= 6500, "8"=7000, "9"=7000, "10"=7000,
-                         "11"=7000, "12"=6500, "13"=6000, "14"=5500, "15"=5000,
-                         "16"= 4000, "17"=2500, "18"=1500, "19"=1000)) %>% #EASR age group pops 
-    mutate(easr_first = numerator*epop/denominator) #easr population
-  
-  # aggregating by year, code and time
-  dataset <- dataset %>% subset(select= -c(age_grp)) %>%
-    group_by(year, sex) %>% summarise_all(funs(sum), na.rm =T) %>% ungroup()
-  
-  #Calculating rates
-  dataset <- dataset %>%
-    mutate(epop_total = epop_total,  # Total EPOP population
-           easr = easr_first/epop_total, # easr calculation
-           rate = easr*100000)  # rate calculation
-}
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -81,15 +57,7 @@ data_allergy <- tbl_df(dbGetQuery(channel, statement=
 setNames(tolower(names(.))) #variables to lower case
 
 # recode age groups
-data_allergy <- data_allergy %>% mutate(age_grp = case_when( 
-  age < 5 ~ 1, age > 4 & age <10 ~ 2, age > 9 & age <15 ~ 3, age > 14 & age <20 ~ 4,
-  age > 19 & age <25 ~ 5, age > 24 & age <30 ~ 6, age > 29 & age <35 ~ 7, 
-  age > 34 & age <40 ~ 8, age > 39 & age <45 ~ 9, age > 44 & age <50 ~ 10,
-  age > 49 & age <55 ~ 11, age > 54 & age <60 ~ 12, age > 59 & age <65 ~ 13, 
-  age > 64 & age <70 ~ 14, age > 69 & age <75 ~ 15, age > 74 & age <80 ~ 16,
-  age > 79 & age <85 ~ 17, age > 84 & age <90 ~ 18, age > 89 ~ 19, 
-  TRUE ~ as.numeric(age)
-))
+data_allergy <- data_allergy %>%  create_agegroups() 
 
 #Bring populations file#
 scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2018.rds') %>%
@@ -98,14 +66,7 @@ scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations
 
 # aggregating to scottish total population
 # recode age groups
-scottish_population <- scottish_population %>% mutate(age_grp = case_when( 
-  age < 5 ~ 1, age > 4 & age <10 ~ 2, age > 9 & age <15 ~ 3, age > 14 & age <20 ~ 4,
-  age > 19 & age <25 ~ 5, age > 24 & age <30 ~ 6, age > 29 & age <35 ~ 7, 
-  age > 34 & age <40 ~ 8, age > 39 & age <45 ~ 9, age > 44 & age <50 ~ 10,
-  age > 49 & age <55 ~ 11, age > 54 & age <60 ~ 12, age > 59 & age <65 ~ 13, 
-  age > 64 & age <70 ~ 14, age > 69 & age <75 ~ 15, age > 74 & age <80 ~ 16,
-  age > 79 & age <85 ~ 17, age > 84 & age <90 ~ 18, age > 89 ~ 19, 
-  TRUE ~ as.numeric(age))) %>%
+scottish_population <- scottish_population %>% create_agegroups() %>% 
   mutate(sex = as.factor(sex)) %>% 
   group_by(age_grp, sex, year) %>% 
   summarise(pop =sum(pop)) %>% ungroup()
@@ -121,12 +82,7 @@ allergy_scotland <- full_join(allergy_scotland, scottish_population, c("year", "
 
 allergy_scotland <- allergy_scotland %>% gather("type", "numerator", -c(age_grp, sex, year, denominator))
 
-allergy_scotland <- allergy_scotland %>%
-    mutate(epop = recode(as.character(age_grp), #EASR age group pops 
-                         "1"=5000, "2"=5500, "3"=5500, "4"=5500, "5"=6000, 
-                         "6"=6000, "7"= 6500, "8"=7000, "9"=7000, "10"=7000,
-                         "11"=7000, "12"=6500, "13"=6000, "14"=5500, "15"=5000,
-                         "16"= 4000, "17"=2500, "18"=1500, "19"=1000)) %>% 
+allergy_scotland <- allergy_scotland %>% add_epop() %>% # EASR age group pops
     mutate(easr_first = numerator*epop/denominator) #easr population
   
   # aggregating by year, code and time
