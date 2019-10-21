@@ -11,6 +11,8 @@ packrat/lib*/
 # 'data' folder #
 data/
 archive/
+Communications&Requests/
+previous updates/
 
 # Common text files that may contain data #
 *.[cC][sS][vV]
