@@ -8,9 +8,10 @@
 ###############################################.
 ## Packages/Filepaths ----
 ###############################################.
-lapply(c("dplyr", "readr", "reshape2", "odbc"), library, character.only = TRUE)
+# load packages and functions required to run all commands
+source("1.analysis_functions.R")
 
-# change depending if you are using R server or R desktop
+# change automatically depending if you are using R server or R desktop
 if (sessionInfo()$platform %in% c("x86_64-redhat-linux-gnu (64-bit)", "x86_64-pc-linux-gnu (64-bit)")) {
   output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/"
   lookups <- "/PHI_conf/ScotPHO/Profiles/Data/Lookups/Population/"
@@ -28,31 +29,17 @@ make_year_labels <- function(dataset) {
   dataset %>% mutate(class2 = paste0(year, "/", substr(year+1, 3,4)))
 }
 
-# To recode age.
-recode_age <- function(dataset) {
-  dataset %>% mutate(age_grp = case_when(between(age, 0, 4) ~ 1,
-      between(age, 5, 9) ~ 2, between(age, 10, 15) ~ 3, between(age, 15, 19) ~ 4, 
-      between(age, 20, 24) ~ 5, between(age, 25, 29) ~ 6, between(age, 30, 34) ~ 7, 
-      between(age, 35, 39) ~ 8, between(age, 40, 44) ~ 9, between(age, 45, 49) ~ 10, 
-      between(age, 50, 54) ~ 11, between(age, 55, 59) ~ 12, between(age, 60, 64) ~ 13,
-      between(age, 65, 69) ~ 14, between(age, 70, 74) ~ 15,  between(age, 75, 79) ~ 16,
-      between(age, 80, 84) ~ 17, between(age, 85, 89) ~ 18, between(age, 90, 200) ~ 19))
-}
-
 # To calculate EASRs
-calculate_easr <- function(dataset, numer_var, cats) {
-  dataset %>% rename(numerator = {{numer_var}}) %>% 
-    mutate(easr = numerator*epop/denominator,
-      var_dsr = (numerator*epop^2)/denominator^2) %>% #calculate variance
-    group_by_at(c(cats, "year")) %>% #aggregating
-    summarize_at(c("numerator", "easr", "var_dsr"), sum, na.rm = T) %>% ungroup() %>% 
-    mutate(easr = easr/200000, #confidence intervals and rates
-           o_lower = numerator*(1-(1/(9*numerator)) - (1.96/(3*sqrt(numerator))))^3,
-           o_upper = (numerator+1)*(1-(1/(9*(numerator+1))) + (1.96/(3*sqrt(numerator+1))))^3,
-           var_dsr=(1/200000^2)*var_dsr,
-           lci=easr+sqrt(var_dsr/numerator)*(o_lower - numerator),
-           uci=easr+sqrt(var_dsr/numerator)*(o_upper - numerator),
-           rate = easr*100000, lowci=lci*100000, upci=uci*100000)
+calculate_easr <- function(dataset, cats, epop_total) {
+  
+  dataset %>% 
+    mutate(easr = numerator*epop/denominator) %>% #calculate variance
+    group_by_at(c(cats, "sex_grp", "year")) %>% #aggregating
+    summarize_at(c("numerator", "easr"), sum, na.rm = T) %>% ungroup() %>% 
+    mutate(easr = easr/epop_total, #confidence intervals and rates
+           rate = easr*100000) %>% 
+    select(-easr)
+  
 }
 
 ###############################################.
@@ -60,13 +47,9 @@ calculate_easr <- function(dataset, numer_var, cats) {
 ###############################################.
 population <- readRDS(paste0(lookups, "CA_pop_allages_SR.rds")) %>% 
   filter(code == 'S00000001') %>%  # Selecting only Scotland level
-  # Add European Standard Populations for each age group
-    mutate(epop = recode(age_grp, "1"=5000, "2"=5500, "3"=5500, "4"=5500, "5"=6000, 
-                         "6"=6000, "7"= 6500, "8"=7000, "9"=7000, "10"=7000,
-                         "11"=7000, "12"=6500, "13"=6000, "14"=5500, "15"=5000,
-                         "16"= 4000, "17"=2500, "18"=1500, "19"=1000),
+  add_epop() %>% # Add European Standard Populations for each age group
   # Create required age groups  (<25, 25-44, 45-64, 65+)
-      age_grp2 = case_when(between(age_grp, 1, 5) ~ "<25",
+  mutate(age_grp2 = case_when(between(age_grp, 1, 5) ~ "<25",
                           between(age_grp, 6, 9) ~ "25-44",
                           between(age_grp, 10, 13) ~ "45-64",
                           between(age_grp, 14, 19) ~ "65+"),
@@ -100,7 +83,7 @@ admissions_diab <- tbl_df(dbGetQuery(channel, statement=
             || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]')
             THEN 1 ELSE 0 END) diabetes 
     FROM ANALYSIS.SMR01_PI 
-    WHERE discharge_date between '1 April 2008' and '31 March 2019'
+    WHERE discharge_date between '1 April 2009' and '31 March 2019'
       and hbtreat_currentdate is not null 
       and sex in ('1','2') 
       and regexp_like(main_condition || other_condition_1 || other_condition_2
@@ -110,39 +93,39 @@ admissions_diab <- tbl_df(dbGetQuery(channel, statement=
   setNames(tolower(names(.)))  #variables to lower case
 
 #Age groups and aggregating by sex, year and age group
-admissions_diab <- admissions_diab %>% recode_age() %>% 
+admissions_diab <- admissions_diab %>% create_agegroups() %>% 
   mutate(age_grp2 = case_when(between(age_grp, 1, 5) ~ "<25",
                               between(age_grp, 6, 9) ~ "25-44",
                               between(age_grp, 10, 13) ~ "45-64",
                               between(age_grp, 14, 19) ~ "65+")) %>% 
   group_by(year, sex_grp, age_grp, age_grp2) %>% 
-  summarize_at(c("diabetes", "diab_main", "diab_keto"), sum, na.rm = T)
+  summarize_at(c("diabetes", "diab_main", "diab_keto"), sum, na.rm = T) %>% 
+  #From wide to long format
+  gather(type, numerator, -c(year, sex_grp, age_grp, age_grp2))
+
+#Bringing population information to calculate rates.
+admissions_diab <- left_join(admissions_diab, population, 
+                             by = c("year", "sex_grp", "age_grp", "age_grp2")) %>% 
+  add_epop() #adding European population for rate calculation
 
 saveRDS(admissions_diab, paste0(output, "diabetes_admissions_basefile.rds"))
 admissions_diab <- readRDS(paste0(output, "diabetes_admissions_basefile.rds"))
 
 ###############################################.
 # Creating file for Secondary care section chart 1.
-#From wide to long format
-seccare_c1 <- admissions_diab %>% 
-  melt(id.vars = c("year", "sex_grp", "age_grp", "age_grp2"),
-       variable.name = "type",  value.name = "numerator")
-
-#Bringing population information to calculate rates.
-seccare_c1 <- left_join(seccare_c1, population, 
-                             by = c("year", "sex_grp", "age_grp", "age_grp2"))
-
-#Creating totals for both sexes and adding to the basefile.
-total_seccare_c1 <- seccare_c1 %>%  group_by(year, age_grp, age_grp2, type) %>% 
+#Creating totals for both sexes 
+seccare_c1_total <- admissions_diab %>%  group_by(year, age_grp, age_grp2, type) %>% 
   summarise_at(c("numerator", "denominator", "epop"), sum, na.rm = T) %>% ungroup() %>% 
   mutate(sex_grp = "All")
 
-seccare_c1 <- rbind(seccare_c1, total_seccare_c1) %>% filter(type != "diab_keto")
+# Calculating rates for all and for each sex
+seccare_c1_total <- seccare_c1_total %>% calculate_easr(cats = "type", epop_total = 200000)
 
-#Calculating rates
-seccare_c1 <- seccare_c1 %>% 
-  #Calculating rates
-  calculate_easr(numer_var = "numerator", cats = c("type", "sex_grp")) %>% 
+seccare_c1_sex <- admissions_diab %>% calculate_easr(cats = "type", epop_total = 100000)
+
+# Preparing file for chart
+seccare_c1 <- rbind(seccare_c1_total, seccare_c1_sex) %>% 
+  filter(type != "diab_keto") %>% #ketoacidosis is shown in the second chart
   #Creating labels for chart
   mutate(class1 = case_when(type == 'diab_main' & sex_grp == 'All' ~ 'All - main diagnosis',
       type == 'diab_main' & sex_grp == '2' ~ 'Female - main diagnosis',
@@ -157,19 +140,24 @@ write_csv(seccare_c1, paste0(output, "diabetes_secondarycare_chart1.csv"))
 
 ###############################################.
 # Creating file for Secondary care section chart 2.
-#Bringing population information to calculate rates.
-seccare_c2 <- left_join(admissions_diab, population, 
-                        by = c("year", "sex_grp", "age_grp", "age_grp2")) %>% 
-  select(-diab_main, -diabetes) %>% as.data.frame()
-
-#Creating totals for both sexes and adding to the basefile.
-total_seccare_c2 <- seccare_c2 %>%  mutate(age_grp2 = "All")
-
-seccare_c2 <- rbind(seccare_c2, total_seccare_c2)
+seccare_c2 <- rbind( #calculating rates for each age group
+  # For under 25 group group
+  admissions_diab %>% filter(age_grp2 == "<25" & type == "diab_keto") %>% 
+    calculate_easr(cats = "age_grp2", epop_total = 27500),
+  # For 25 to 44 group
+  admissions_diab %>% filter(age_grp2 == "25-44" & type == "diab_keto") %>% 
+    calculate_easr(cats = "age_grp2", epop_total = 26500),
+  # For 45 to 64 group
+  admissions_diab %>% filter(age_grp2 == "45-64" & type == "diab_keto") %>% 
+    calculate_easr(cats = "age_grp2", epop_total = 26500),
+  # For over 65 group
+  admissions_diab %>% filter(age_grp2 == "65+" & type == "diab_keto") %>% 
+    calculate_easr(cats = "age_grp2", epop_total = 19500),
+  # all ages by sex 
+  seccare_c1_sex %>% filter(type == "diab_keto") %>% select(-type) %>% 
+    mutate(age_grp2 =  "All")) 
 
 seccare_c2 <- seccare_c2 %>% 
-  #Calculating rates
-  calculate_easr(numer_var = "diab_keto", cats = c("age_grp2", "sex_grp")) %>% 
   #Creating labels for chart
   mutate(class1 = case_when(age_grp2 == 'All' & sex_grp == '2' ~ 'Female - all ages',
                             age_grp2 == '<25' & sex_grp == '2' ~ 'Female - 0-24',
@@ -207,10 +195,10 @@ deaths_diab <- tbl_df(
   setNames(tolower(names(.)))  #variables to lower case
   
 # Creating age_groups and aggregating by them.
-deaths_diab <- deaths_diab %>% recode_age() %>% group_by(year, sex_grp, age_grp) %>% 
+deaths_diab <- deaths_diab %>% create_agegroups() %>% group_by(year, sex_grp, age_grp) %>% 
   summarize_at(c("all_diag", "main_diag"), sum, na.rm = T) %>%
-  melt(id.vars = c("year", "sex_grp", "age_grp"), #From wide to long format
-       variable.name = "type",  value.name = "numerator") %>% ungroup()
+  gather(type, numerator, -c(year, sex_grp, age_grp)) %>%  #From wide to long format
+  ungroup()
 
 #Bringing population information to calculate rates.
 deaths_diab <- left_join(deaths_diab, population, 
