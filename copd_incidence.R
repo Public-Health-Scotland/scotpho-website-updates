@@ -18,15 +18,20 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
 # Part 1 - deaths file - data from SMRA ----
 ###############################################.
 # SQL query for copd deaths: Scottish residents with a main cause of death of copd
-# extracting by date of registration and getting calendar year
+# extracting by date of registration and getting calendar and financial year
+# excluding unvalid sex cases
 copd_deaths <- tbl_df(dbGetQuery(channel, statement=
-  "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION year, 
-        UNDERLYING_CAUSE_OF_DEATH cod, AGE, SEX
+  "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION cal_year, 
+        UNDERLYING_CAUSE_OF_DEATH cod, AGE, SEX, DATE_OF_registration doadm,
+        DATE_OF_registration dodis,
+        CASE WHEN extract(month from date_of_registration) > 3 
+            THEN extract(year from date_of_registration)
+            ELSE extract(year from date_of_registration) -1 END as year
    FROM ANALYSIS.GRO_DEATHS_C
-   WHERE date_of_registration between '1 January 1996' and '31 December 2018'
+   WHERE date_of_registration between '1 January 2002' and '1 April 2019'
         AND country_of_residence ='XS'
-        AND (substr(UNDERLYING_CAUSE_OF_DEATH,1,3) = any('J40','J41', 'J42', 'J43', 'J44', '490', '491', '492', '496') 
-             or substr(UNDERLYING_CAUSE_OF_DEATH,1,4) = any('-490', '-491', '-492', '-496'))")) %>%
+        AND sex <> 9
+        AND regexp_like(UNDERLYING_CAUSE_OF_DEATH, '^J4[0-4]')")) %>%
   setNames(tolower(names(.)))  # variables to lower case
 
 # recode age groups
@@ -35,7 +40,7 @@ copd_deaths <- copd_deaths %>% create_agegroups()
 # bring populations file 
 scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2018.rds') %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
-  subset(year > 1995 & year <= 2018) 
+  subset(year > 2002 & year <= 2018) 
 
 # aggregating to scottish total population
 # recode age groups
@@ -45,14 +50,14 @@ scottish_population <- scottish_population %>% create_agegroups() %>%
   summarise(pop =sum(pop)) %>% ungroup()
 
 # calculate the number of deaths (EASR not required for deaths data on scotpho website)
-copd_deaths_scotland <- copd_deaths %>% group_by(sex, age_grp, year) %>% 
+copd_deaths_scotland <- copd_deaths %>% group_by(sex, age_grp, cal_year) %>% 
   count() %>% # calculate numerator
   ungroup()
 
 # Joining data with population (denominator)
 copd_deaths_scotland <- full_join(copd_deaths_scotland, scottish_population, 
-                                  c("year", "age_grp", "sex")) %>% 
-  rename(numerator = n, denominator = pop) # numerator and denominator used for calculation
+                                  c("cal_year" = "year", "age_grp", "sex")) %>% 
+  rename(numerator = n, denominator = pop, year = cal_year) # numerator and denominator used for calculation
 
 copd_deaths_scotland <- copd_deaths_scotland %>% add_epop() # EASR age group pops
 
@@ -68,23 +73,32 @@ copd_deaths_chart <- create_chart_data(dataset = copd_deaths_scotland, epop_tota
 # SQL query extracts data one row per admission with an COPD diagnosis, by financial year. 
 # Excluding unvalid sex cases and non-scottish
 query_sql <- function(table) {
-  paste0("SELECT distinct link_no linkNo, cis_marker CIS, max(age_in_years) age, min(ADMISSION_DATE) doadm, 
-    max(sex) sex, max(CASE WHEN extract(month from admission_date) > 3 
-         THEN extract(year from admission_date)
-         ELSE extract(year from admission_date) -1 END) as year
+  paste0("SELECT distinct link_no linkNo, cis_marker CIS, max(age_in_years) age, 
+            min(ADMISSION_DATE) doadm,  max(discharge_date) dodis, max(sex) sex, min(DR_POSTCODE) pc7, 
+            max(CASE WHEN extract(month from admission_date) > 3 
+                THEN extract(year from admission_date)
+                ELSE extract(year from admission_date) -1 END) as year
          FROM ", table,
          " WHERE admission_date between '1 April 1991' and '31 March 2019' 
-         AND hbtreat_currentdate is not null
-         AND substr(hbtreat_currentdate,0,4) != 'S082'
-         AND sex in ('1','2')
-         AND (substr(main_condition,0,3) = any('J40','J41', 'J42', 'J43', 'J44', '490', '491', '492', '496') 
-         OR substr(main_condition,0,4) = any('-490', '-491', '-492', '-496'))
+              AND sex in ('1','2')
+              AND (substr(main_condition,0,3) = any('J40','J41', 'J42', 'J43', 'J44', '490', '491', '492', '496') 
+                OR substr(main_condition,0,4) = any('-490', '-491', '-492', '-496'))
          GROUP BY link_no, cis_marker") 
 }
 
 data_copd <- rbind(tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR01_PI"))),
                      tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR01_HISTORIC"))) ) %>%
   setNames(tolower(names(.)))  # variables to lower case
+
+# Bringing datazone info to exclude non-Scottish.
+postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2019_2.rds') %>% 
+  setNames(tolower(names(.))) %>%   #variables to lower case
+  select(pc7, datazone2011)
+
+data_copd <- left_join(data_copd, postcode_lookup, "pc7") %>% 
+  subset(!(is.na(datazone2011))) %>%  #select out non-scottish
+  mutate_if(is.character, factor) %>%  # converting variables into factors
+  select(-pc7, -datazone2011)
 
 deaths_admissions <- bind_rows(copd_deaths, data_copd)
 
@@ -97,12 +111,11 @@ deaths_admissions <- deaths_admissions %>%
   arrange(linkno, doadm) %>% 
   group_by(linkno) %>% 
   # calculating difference between first admission and each one of them. Converting into years
-  mutate(diff_time = as.numeric(difftime(doadm, lag(doadm), units="days"))/365) %>%
+  mutate(diff_time = as.numeric(difftime(doadm, lag(dodis), units="days"))/365) %>%
   # select first admission/death per person with no previous admission, within 10 years
   filter(is.na(diff_time) | diff_time >= 10) %>%
   ungroup() %>%
   filter(year > 2001) #selecting years required
-
 
 # calculate European age sex standardised rate
 deaths_admissions_scotland <- deaths_admissions %>% group_by(age_grp, age_grp2, sex, year) %>% 
@@ -111,16 +124,8 @@ deaths_admissions_scotland <- deaths_admissions %>% group_by(age_grp, age_grp2, 
 # Joining data with population (denominator)
 deaths_admissions_scotland <- full_join(deaths_admissions_scotland, scottish_population, 
                                 c("year", "age_grp", "sex")) %>% 
-  rename(numerator = n, denominator = pop) # numerator and denominator used for calculation
-
-
-deaths_admissions_scotland <- deaths_admissions_scotland %>%
-  subset(year > 2001 & year <= 2018) %>%
-  mutate(epop = recode(as.character(age_grp), # EASR age group pops
-                       "1"=5000, "2"=5500, "3"=5500, "4"=5500, "5"=6000, 
-                       "6"=6000, "7"= 6500, "8"=7000, "9"=7000, "10"=7000,
-                       "11"=7000, "12"=6500, "13"=6000, "14"=5500, "15"=5000,
-                       "16"= 4000, "17"=2500, "18"=1500, "19"=1000)) 
+  rename(numerator = n, denominator = pop) %>% # numerator and denominator used for calculation
+  add_epop() #adding european populations
 
 # Converting NA's to 0s
 deaths_admissions_scotland$numerator[is.na(deaths_admissions_scotland$numerator)] <- 0 
