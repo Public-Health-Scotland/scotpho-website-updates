@@ -45,13 +45,13 @@ create_chart_data <- function(dataset, epop_total, filename, sex = T, year_type 
     data_rates <- data_rates %>% select(year, sex, rate) %>% 
       mutate(sex = recode(sex, "1" = "Male", "2" = "Female"),
              year = case_when( year_type == "financial" ~paste0(year, "/", substr(year+1, 3,4)),
-                               year_type == "calendar" ~ year))
+                               year_type == "calendar" ~ paste0(year)))
   }  else if (sex == F) {
     # export in format for website chart update (year, sex, rate in csv file) and save
     data_rates <- data_rates %>% select(year, rate) %>% 
       mutate(sex = "All",
              year = case_when( year_type == "financial" ~paste0(year, "/", substr(year+1, 3,4)),
-                               year_type == "calendar" ~ year))
+                               year_type == "calendar" ~ paste0(year)))
   }
   
   data_chart <<- data_rates #to allow checking
