@@ -28,19 +28,17 @@ copd_deaths <- tbl_df(dbGetQuery(channel, statement=
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
    FROM ANALYSIS.GRO_DEATHS_C
-   WHERE date_of_registration between '1 January 2002' and '1 April 2019'
+   WHERE date_of_registration between '1 January 2002' and '31 March 2019'
         AND country_of_residence ='XS'
         AND sex <> 9
         AND regexp_like(UNDERLYING_CAUSE_OF_DEATH, '^J4[0-4]')")) %>%
-  setNames(tolower(names(.)))  # variables to lower case
-
-# recode age groups
-copd_deaths <- copd_deaths %>% create_agegroups()
+  setNames(tolower(names(.))) %>%   # variables to lower case
+  create_agegroups() # recode age groups for standardisation
 
 # bring populations file 
 scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2018.rds') %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
-  subset(year > 2002 & year <= 2018) 
+  subset(year > 2001 & year <= 2018) 
 
 # aggregating to scottish total population
 # recode age groups
@@ -142,13 +140,13 @@ data_eightyfiveplus <- data_agegroups %>% filter(age_grp == 3) # 85+
 # run the create rates function for each cut
 # export in format for website chart update (year, sex, rate in csv file) and save
 
-all_copd_chart <- create_chart_data(dataset = deaths_admissions_scotland, epop_total = 200000, filename = "all_copd_scotland_chart")
+all_copd_chart <- create_chart_data(dataset = deaths_admissions_scotland, epop_total = 100000, filename = "all_copd_scotland_chart")
 
-undersixtyfive_copd_chart <- create_chart_data(dataset = data_undersixtyfive, epop_total = 170000, filename = "copd_undersixtyfive_chart")
+undersixtyfive_copd_chart <- create_chart_data(dataset = data_undersixtyfive, epop_total = 80500, filename = "copd_undersixtyfive_chart")
 
-sixtyfive_eightyfour_copd_chart <- create_chart_data(dataset = data_sixtyfive_eightyfour, epop_total = 34000, filename = "copd_sixtyfive_eightyfour_chart")
+sixtyfive_eightyfour_copd_chart <- create_chart_data(dataset = data_sixtyfive_eightyfour, epop_total = 17000, filename = "copd_sixtyfive_eightyfour_chart")
 
-eightyfiveplus_copd_chart <- create_chart_data(dataset = data_eightyfiveplus, epop_total = 5000, filename = "copd_eightyfiveplus_chart")
+eightyfiveplus_copd_chart <- create_chart_data(dataset = data_eightyfiveplus, epop_total = 2500, filename = "copd_eightyfiveplus_chart")
 
 
 ##END
