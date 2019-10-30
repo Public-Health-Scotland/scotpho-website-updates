@@ -14,26 +14,39 @@ library(plotly)
 ###############################################.
 ###############################################.
 # Function to calculate age sex standardized rates
-create_rates <- function(dataset, epop_total, sex ) {
+create_rates <- function(dataset, epop_total, sex, cats = NULL ) {
   dataset <- dataset %>%
     mutate(easr_first = numerator*epop/denominator) # easr population
   
   if (sex == T) {
     # aggregating by year, code and time
     dataset <- dataset %>% select(-age_grp) %>%
-      group_by(year, sex) %>% summarise_all(sum, na.rm =T) %>% ungroup()    
+      group_by_at(c(cats, "year", "sex")) %>% 
+      summarize_at(c("numerator", "easr_first"), sum, na.rm = T) %>% ungroup()    
   } else if (sex == F) {
     # aggregating by year, code and time
     dataset <- dataset %>% select(-age_grp, -sex) %>%
-      group_by(year) %>% summarise_all(sum, na.rm =T) %>% ungroup()
+      group_by_at(c(cats, "year")) %>% 
+      summarize_at(c("numerator", "easr_first"), sum, na.rm = T) %>% ungroup()
   }
   
   # Calculating rates
   dataset <- dataset %>%
     mutate(epop_total = epop_total,  # Total EPOP population
            easr = easr_first/epop_total, # easr calculation
-           rate = easr*100000)  # rate calculation
+           rate = easr*100000) %>%   # rate calculation
+    select(-c(easr_first, epop_total, easr))
 }
+
+###############################################.
+# Function to create labels for the years
+# To relabel years.
+make_year_labels <- function(dataset, year_type) {
+  dataset %>% 
+    mutate(year = case_when( year_type == "financial" ~ paste0(year, "/", substr(year+1, 3,4)),
+                             year_type == "calendar" ~ paste0(year)))
+}
+
 
 ###############################################.
 # Function to create the files required for updating the charts
@@ -43,15 +56,14 @@ create_chart_data <- function(dataset, epop_total, filename, sex = T, year_type 
   if (sex == T) {
     # export in format for website chart update (year, sex, rate in csv file) and save
     data_rates <- data_rates %>% select(year, sex, rate) %>% 
-      mutate(sex = recode(sex, "1" = "Male", "2" = "Female"),
-             year = case_when( year_type == "financial" ~paste0(year, "/", substr(year+1, 3,4)),
-                               year_type == "calendar" ~ paste0(year)))
+      mutate(sex = recode(sex, "1" = "Male", "2" = "Female")) %>% 
+      make_year_labels(year_type = year_type)
+
   }  else if (sex == F) {
     # export in format for website chart update (year, sex, rate in csv file) and save
     data_rates <- data_rates %>% select(year, rate) %>% 
-      mutate(sex = "All",
-             year = case_when( year_type == "financial" ~paste0(year, "/", substr(year+1, 3,4)),
-                               year_type == "calendar" ~ paste0(year)))
+      mutate(sex = "All") %>% make_year_labels(year_type = year_type)
+
   }
   
   data_chart <<- data_rates #to allow checking
