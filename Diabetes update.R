@@ -187,13 +187,14 @@ deaths_diab <- left_join(deaths_diab, population,
 # Creating totals for both sexes and adding them to the basefile.
 deaths_totals <- deaths_diab %>% group_by(year, age_grp, age_grp2, type) %>% 
   summarize_at(c("numerator", "denominator", "epop"), sum, na.rm = T) %>% ungroup() %>% 
-  mutate(sex = "All")
+  mutate(sex = "All") %>% 
+  create_rates(cats = c("type", "sex"), epop_total = 200000, sex = T)
+  
+#Calculating rates for each sex
+deaths_diab_sex <- deaths_diab %>% 
+  create_rates(cats = c("type", "sex"), epop_total = 100000, sex = T)
 
-deaths_diab <- rbind(deaths_diab, deaths_totals)
-
-deaths_diab <- deaths_diab %>% 
-  #Calculating rates
-  create_rates(cats = c("type", "sex"), epop_total = 100000, sex = T) %>% 
+deaths_diab_rates <- rbind(deaths_diab_sex, deaths_totals) %>% 
   #Creating labels for chart
   mutate(class1 = case_when(type == 'main_diag' & sex == 'All' ~ 'All - underlying',
                             type == 'main_diag' & sex == '2' ~ 'Female - underlying',
