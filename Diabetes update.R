@@ -204,6 +204,6 @@ deaths_diab_rates <- rbind(deaths_diab_sex, deaths_totals) %>%
                             type == 'all_diag' & sex == '1' ~ 'Male - contributory')) %>% 
   rename(class2 = year) %>% select(class2, class1, numerator, rate)
 
-write_csv(deaths_diab, paste0(output, "diabetes_mortality_chart1.csv"))
+write_csv(deaths_diab_rates, paste0(output, "diabetes_mortality_chart1.csv"))
 
 ##END
