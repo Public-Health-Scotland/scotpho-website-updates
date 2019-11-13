@@ -93,12 +93,12 @@ postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scott
   setNames(tolower(names(.))) %>%   #variables to lower case
   select(pc7, datazone2011)
 
-data_copd <- left_join(data_copd, postcode_lookup, "pc7") %>% 
+data_copd_all <- left_join(data_copd, postcode_lookup, "pc7") %>% 
   subset(!(is.na(datazone2011))) %>%  #select out non-scottish
   mutate_if(is.character, factor) %>%  # converting variables into factors
   select(-pc7, -datazone2011)
 
-deaths_admissions <- bind_rows(copd_deaths, data_copd)
+deaths_admissions <- bind_rows(copd_deaths, data_copd_all)
 
 deaths_admissions <- deaths_admissions %>% create_agegroups() %>% 
   mutate(# age groups - over 10 and under 10
@@ -148,5 +148,28 @@ sixtyfive_eightyfour_copd_chart <- create_chart_data(dataset = data_sixtyfive_ei
 
 eightyfiveplus_copd_chart <- create_chart_data(dataset = data_eightyfiveplus, epop_total = 2500, filename = "copd_eightyfiveplus_chart")
 
-
 ##END
+
+#NHS Boards data
+postcode_lookup_boards <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2019_2.rds') %>% 
+  setNames(tolower(names(.))) %>%   #variables to lower case
+  select(pc7, hb2019, hb2019name)
+
+boards_copd <- left_join(data_copd, postcode_lookup_boards, "pc7") %>% 
+  subset(!(is.na(hb2019))) %>%  #select out non-scottish
+  mutate_if(is.character, factor)
+
+deaths_admissions_boards <- bind_rows(copd_deaths, boards_copd) %>% group_by(hb2019, hb2019name, year, sex, age_grp) %>%
+  subset(!(is.na(hb2019))) %>%  #select out non-scottish
+  mutate_if(is.character, factor) %>%
+  subset(year == 2018) %>%
+  count() %>% # calculate numerator
+  rename(numerator = n) %>%
+  ungroup()
+
+deaths_admissions_boards <- full_join(deaths_admissions_boards, scottish_population, 
+                           c("year", "age_grp", "sex")) %>% 
+  rename(denominator = pop) # numerator and denominator used for calculation
+
+deaths_admissions_boards <- deaths_admissions_boards %>% add_epop() # EASR age group pops
+
