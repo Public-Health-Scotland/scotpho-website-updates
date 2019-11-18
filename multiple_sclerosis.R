@@ -3,12 +3,6 @@
 ###############################################.
 # Functions/packages/filepaths ----
 ###############################################.
-# load packages required to run all commands
-library(tidyr)
-library(dplyr)
-library(readr) 
-library(odbc) 
-
 source("1.analysis_functions.R")
 
 # file path for saved files
@@ -157,21 +151,5 @@ twentyfive_fiftynine_ms_chart <- create_chart_data(dataset = data_twentyfive_fif
 
 sixtyplus_ms_chart <- create_chart_data(dataset = data_sixtyplus, epop_total = 25500, filename = "ms_sixtyplus_chart")
 
-#nhs boards data
-
-postcode_lookup_boards <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2019_2.rds') %>% 
-  setNames(tolower(names(.))) %>%   #variables to lower case
-  select(pc7, hb2019, hb2019name)
-
-boards_ms <- left_join(data_ms, postcode_lookup_boards, "pc7") %>% 
-  subset(!(is.na(hb2019))) %>%  #select out non-scottish
-  mutate_if(is.character, factor)
-
-deaths_admissions_boards <- bind_rows(ms_deaths, boards_ms) %>% group_by(hb2019, hb2019name, year, sex) %>%
-  subset(!(is.na(hb2019))) %>%  #select out non-scottish
-  mutate_if(is.character, factor) %>%
-  subset(year == 2018) %>%
-  count() %>% # calculate numerator
-  rename(numerator = n) %>%
-  ungroup()
+##END
 
