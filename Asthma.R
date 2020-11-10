@@ -12,7 +12,7 @@
 source("1.analysis_functions.R")
 
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/sept2019_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/december2020_update/"
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -31,7 +31,7 @@ asthma_deaths <- tbl_df(dbGetQuery(channel, statement=
           THEN extract(year from date_of_registration)
           ELSE extract(year from date_of_registration) -1 END as year
     FROM ANALYSIS.GRO_DEATHS_C
-    WHERE date_of_registration between '1 January 2002' and '31 December 2018'
+    WHERE date_of_registration between '1 January 2002' and '31 December 2019'
         AND country_of_residence ='XS'
         AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('J45','J46', '493') 
             or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-493')")) %>%
@@ -68,7 +68,7 @@ data_asthma <- tbl_df(dbGetQuery(channel, statement=
         THEN extract(year from admission_date) 
         ELSE extract(year from admission_date) -1 END as year 
    FROM ANALYSIS.SMR01_PI z
-   WHERE admission_date between '1 April 2002' and '31 March 2019'
+   WHERE admission_date between '1 April 2002' and '31 March 2020'
       AND sex in ('1','2') 
       AND regexp_like(main_condition, 'J4[5-6]') 
    GROUP BY link_no, CASE WHEN extract(month from admission_date) > 3 THEN
@@ -81,7 +81,7 @@ data_asthma <- data_asthma %>% create_agegroups() %>%
   age_grp2 = case_when(age < 10 ~ 1, age > 9 ~ 2 ))
 
 # Bringing datazone info to exclude non-Scottish.
-postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2019_2.rds') %>% 
+postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2020_2.rds') %>% 
   setNames(tolower(names(.))) %>%   #variables to lower case
   select(pc7, datazone2011)
 
@@ -95,9 +95,9 @@ data_asthma <- left_join(data_asthma, postcode_lookup, "pc7") %>%
 ###############################################.
 
 # bring populations file 
-scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2018.rds') %>%
+scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2019.rds') %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
-  subset(year > 2001 & year <= 2018) 
+  subset(year > 2001 & year <= 2019) 
 
 # aggregating to scottish total population
 # recode age groups
