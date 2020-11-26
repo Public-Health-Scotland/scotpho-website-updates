@@ -149,5 +149,60 @@ sixtyfive_eightyfour_copd_chart <- create_chart_data(dataset = data_sixtyfive_ei
 
 eightyfiveplus_copd_chart <- create_chart_data(dataset = data_eightyfiveplus, epop_total = 2500, filename = "copd_eightyfiveplus_chart")
 
+###############################################.
+# Part 3 - DEPRIVATION ----
+###############################################.
+
+# deprivation lookup to get datazones and quintiles
+dep_lookup <- readRDS("/PHI_conf/ScotPHO/Profiles/Data/Lookups/Geography/deprivation_geography.rds") %>%
+  rename(datazone2011 = datazone) %>%
+  select(datazone2011, year, sc_quin) %>%
+  filter(year == 2019)
+
+# population file to get population in each datazone
+dz11_pop <- readRDS("/conf/linkage/output/lookups/Unicode/Populations/Estimates/DataZone2011_pop_est_2011_2019.rds") %>%
+  setNames(tolower(names(.))) %>%
+  rename(age90 = age90plus) %>%
+  select(year, datazone2011, sex, age65:age90) %>%
+  filter(year == 2019) %>%
+  gather(age, pop, -c(year, datazone2011, sex)) %>%
+  mutate(age = as.numeric(gsub("age", "", age)))
+
+dz11_pop <- dz11_pop %>%
+  mutate(age_grp = case_when(between(age, 65, 84) ~ 1,
+                             between(age, 85, 90) ~ 2),
+         sex = case_when(sex == "M" ~ 1, sex == "F" ~ 2)) %>%
+  group_by(year, datazone2011, age_grp, sex) %>%
+  summarise(pop =sum(pop, na.rm=T)) %>%  
+  ungroup()
+
+# match datazone populations to quintiles
+dz_dep_lookup <- left_join(dz11_pop, dep_lookup, by = c("datazone2011", "year")) %>%
+  group_by(year, sc_quin, datazone2011) %>%
+  summarise(pop =sum(pop, na.rm=T)) %>% ungroup()
+
+# select data used to calculate rates
+copd_dep <- data_copd %>%
+  filter(age > 64) %>%
+  mutate(age_grp = case_when(between(age, 65, 84) ~ 1,
+                             between(age, 85, 200) ~ 2),
+         sex = as.numeric(sex)) %>%
+  select(year, age_grp, sex, pc7) %>%
+  filter(year == 2019)
+  
+copd_dep_join <- left_join(copd_dep, postcode_lookup, "pc7") %>% 
+  subset(!(is.na(datazone2011))) %>%
+  group_by(year, sex, age_grp, datazone2011) %>%
+  count() %>%
+  ungroup()
+  
+copd_dep_join <- left_join(copd_dep_join, dz_dep_lookup) %>%
+  group_by(year, sex, age_grp, sc_quin) %>%
+  summarise(n =sum(n, na.rm=T), pop =sum(pop, na.rm=T)) %>%
+  ungroup()
+
+rates_depr <- copd_dep_join %>%
+  mutate(rate = n/pop*100000) 
+
 ##END
 
