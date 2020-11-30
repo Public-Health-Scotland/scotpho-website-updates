@@ -13,11 +13,11 @@ source("1.analysis_functions.R")
 
 # change automatically depending if you are using R server or R desktop
 if (sessionInfo()$platform %in% c("x86_64-redhat-linux-gnu (64-bit)", "x86_64-pc-linux-gnu (64-bit)")) {
-  output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/"
+  output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/20201208release/"
   lookups <- "/PHI_conf/ScotPHO/Profiles/Data/Lookups/Population/"
   
 } else {
-  output <- "//stats/ScotPHO/Website/Topics/Diabetes/Data/"
+  output <- "//stats/ScotPHO/Website/Topics/Diabetes/Data/20201208release/"
   lookups <- "//stats/ScotPHO/Profiles/Data/Lookups/Population/"
 }
 
@@ -62,7 +62,7 @@ admissions_diab <- tbl_df(dbGetQuery(channel, statement=
             || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]')
             THEN 1 ELSE 0 END) diabetes 
     FROM ANALYSIS.SMR01_PI 
-    WHERE discharge_date between '1 April 2009' and '31 March 2019'
+    WHERE discharge_date between '1 April 2010' and '31 March 2020'
       and hbtreat_currentdate is not null 
       and sex in ('1','2') 
       and regexp_like(main_condition || other_condition_1 || other_condition_2
@@ -163,7 +163,7 @@ deaths_diab <- tbl_df(
   "SELECT year_of_registration year, sex, age, count(*) all_diag,  
     sum(case when regexp_like(UNDERLYING_CAUSE_OF_DEATH, 'E1[01234]') then 1 else 0 end) main_diag 
   FROM ANALYSIS.GRO_DEATHS_C 
-  WHERE year_of_registration between 2008 and 2018 
+  WHERE year_of_registration between 2009 and 2019 
     and country_of_residence= 'XS' 
     and sex <> 9 
     and regexp_like(UNDERLYING_CAUSE_OF_DEATH || cause_of_death_code_0 ||
