@@ -6,7 +6,7 @@
 source("1.analysis_functions.R")
 
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Multiple Sclerosis/december2020_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Multiple Sclerosis/march2021_update/"
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
