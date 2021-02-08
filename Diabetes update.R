@@ -13,11 +13,11 @@ source("1.analysis_functions.R")
 
 # change automatically depending if you are using R server or R desktop
 if (sessionInfo()$platform %in% c("x86_64-redhat-linux-gnu (64-bit)", "x86_64-pc-linux-gnu (64-bit)")) {
-  output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/20201208release/"
+  output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/202103release/"
   lookups <- "/PHI_conf/ScotPHO/Profiles/Data/Lookups/Population/"
   
 } else {
-  output <- "//stats/ScotPHO/Website/Topics/Diabetes/Data/20201208release/"
+  output <- "//stats/ScotPHO/Website/Topics/Diabetes/Data/202103release/"
   lookups <- "//stats/ScotPHO/Profiles/Data/Lookups/Population/"
 }
 
