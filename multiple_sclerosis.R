@@ -17,7 +17,7 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
 ###############################################.
 # Part 1 - deaths file - data from SMRA ----
 ###############################################.
-# SQL query for epilepsy deaths: Scottish residents with a main cause of death of MS
+# SQL query for MS deaths: Scottish residents with a main cause of death of MS
 # extracting by date of registration and calendar year
 ms_deaths <- tbl_df(dbGetQuery(channel, statement=
       "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION cal_year, 
@@ -47,27 +47,29 @@ scottish_population <- scottish_population %>% create_agegroups() %>%
   group_by(age_grp, sex, year) %>% 
   summarise(pop =sum(pop)) %>% ungroup()
 
-# calculate the number of deaths (EASR not required for deaths data on scotpho website)
-ms_deaths_scotland_number <- ms_deaths %>% group_by(cal_year) %>% 
-  count() %>% # calculate numerator
+# aggregate to Scotland total number of deaths by year
+ms_deaths_scotland_all <- ms_deaths %>% group_by(cal_year) %>% 
+  count() %>% 
   ungroup()
 
-ms_deaths_scotland <- ms_deaths %>% group_by(sex, age_grp, cal_year) %>% 
-  count() %>% # calculate numerator
+# aggregate to Scotland total number of deaths by year and sex
+ms_deaths_scotland <- ms_deaths %>% group_by(sex, cal_year) %>% 
+  count() %>% 
   ungroup()
 
-# Joining data with population (denominator)
-ms_deaths_scotland <- full_join(ms_deaths_scotland, scottish_population, 
-                                  c("cal_year" = "year", "age_grp", "sex")) %>% 
-  rename(numerator = n, denominator = pop, year = cal_year) # numerator and denominator used for calculation
+# combine and format output for plotly
+ms_deaths_scotland <- bind_rows(ms_deaths_scotland_all, ms_deaths_scotland) %>%
+  mutate(class2 = case_when(sex == 1 ~ "Male", sex == 2 ~ "Female",
+                             is.na(sex) ~ "All")) %>%
+  rename("class1" = "cal_year",
+         "measure" = "n") %>%
+  select(-sex)
 
-ms_deaths_scotland <- ms_deaths_scotland %>% add_epop() # EASR age group pops
 
-# Converting NA's to 0s
-ms_deaths_scotland$numerator[is.na(ms_deaths_scotland$numerator)] <- 0 
+# save as csv - for Chart 1 in Mortality section (does not require PRA)
+write_csv(ms_deaths_scotland, paste0(data_folder, filename = "ms_mortality_chart1", ".csv"))
 
-ms_deaths_chart <- create_chart_data(dataset = ms_deaths_scotland, epop_total = 100000, 
-                                       filename = "ms_deaths_scotland", year_type = "calendar")
+
 
 ###############################################.
 # Part 2 - Extract data from SMRA on MS admissions ----
@@ -102,13 +104,14 @@ data_ms_all <- left_join(data_ms, postcode_lookup, "pc7") %>%
   mutate_if(is.character, factor) %>%  # converting variables into factors
   select(-pc7, -datazone2011)
 
+# join admissions and deaths data together
 deaths_admissions <- bind_rows(ms_deaths, data_ms_all)
 
 deaths_admissions <- deaths_admissions %>% create_agegroups() %>% 
   mutate(# age groups - <25, 25-59, 60+
     age_grp2 = case_when(age < 25 ~ 1, age > 24 & age < 60 ~ 2, age > 59 ~ 3))
 
-#10year lookback Calculate lookback-
+# 10year lookback Calculate lookback-
 deaths_admissions <- deaths_admissions %>%
   arrange(linkno, doadm) %>% 
   group_by(linkno) %>% 
@@ -141,15 +144,56 @@ data_undertwentyfive <- data_agegroups %>% filter(age_grp == 1) # under 25
 data_twentyfive_fiftynine <- data_agegroups %>% filter(age_grp == 2) # 25-59
 data_sixtyplus <- data_agegroups %>% filter(age_grp == 3) # 60+
 
+
 # run the create rates function for each cut
 # export in format for website chart update (year, sex, rate in csv file) and save
-all_ms_chart <- create_chart_data(dataset = deaths_admissions_scotland, epop_total = 100000, filename = "ms_scotland_all_chart")
 
+# Secondary Care - Chart 1 (required for PRA)
+all_ms_chart <- create_chart_data(dataset = deaths_admissions_scotland, 
+                                  epop_total = 100000, filename = "ms_seccare_chart1_PRA")
+
+# format output for plotly
+seccare_chart1 <- all_ms_chart %>% 
+  filter(year != "2002/03") %>%
+  rename(class2 = year,
+         measure = rate,
+         class1 = sex) %>%
+  arrange(class1, class2)
+
+write_csv(seccare_chart1, paste0(data_folder, filename = "ms_seccare_chart1_PRA", ".csv"))
+
+
+# Secondary Care - Chart 2 (required for PRA)
 undertwentyfive_ms_chart <- create_chart_data(dataset = data_undertwentyfive, epop_total = 27500, filename = "ms_undertwentyfive_chart")
 
 twentyfive_fiftynine_ms_chart <- create_chart_data(dataset = data_twentyfive_fiftynine, epop_total = 47000, filename = "ms_twentyfive_fiftynine_chart")
 
 sixtyplus_ms_chart <- create_chart_data(dataset = data_sixtyplus, epop_total = 25500, filename = "ms_sixtyplus_chart")
+
+
+# create age-sex variable to allow files to be added together
+undertwentyfive_ms_chart <- undertwentyfive_ms_chart %>%
+  mutate(class1 = case_when(sex == "Male" ~ "Male <25", 
+                            sex == "Female" ~ "Female <25"))
+
+twentyfive_fiftynine_ms_chart <- twentyfive_fiftynine_ms_chart %>%
+  mutate(class1 = case_when(sex == "Male" ~ "Male 25-59", 
+                            sex == "Female" ~ "Female 25-59"))
+
+sixtyplus_ms_chart <- sixtyplus_ms_chart %>%
+  mutate(class1 = case_when(sex == "Male" ~ "Male 60+", 
+                            sex == "Female" ~ "Female 60+"))
+
+# combine and format output for plotly
+seccare_chart2 <- bind_rows(undertwentyfive_ms_chart, twentyfive_fiftynine_ms_chart,
+                                sixtyplus_ms_chart) %>%
+  select(-sex) %>%
+  filter(year != "2002/03") %>%
+  rename(class2 = year,
+         measure = rate) %>%
+  arrange(class1, class2)
+ 
+write_csv(seccare_chart2, paste0(data_folder, filename = "ms_seccare_chart2_PRA", ".csv"))
 
 ##END
 
