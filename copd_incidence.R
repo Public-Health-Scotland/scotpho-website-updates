@@ -169,40 +169,63 @@ dz11_pop <- readRDS("/conf/linkage/output/lookups/Unicode/Populations/Estimates/
   mutate(age = as.numeric(gsub("age", "", age)))
 
 dz11_pop <- dz11_pop %>%
-  mutate(age_grp = case_when(between(age, 65, 84) ~ 1,
+  create_agegroups() %>% 
+  mutate(age_grp2 = case_when(between(age, 65, 84) ~ 1,
                              between(age, 85, 90) ~ 2),
          sex = case_when(sex == "M" ~ 1, sex == "F" ~ 2)) %>%
-  group_by(year, datazone2011, age_grp, sex) %>%
+  group_by(year, datazone2011, age_grp, age_grp2, sex) %>%
   summarise(pop =sum(pop, na.rm=T)) %>%  
   ungroup()
 
 # match datazone populations to quintiles
 dz_dep_lookup <- left_join(dz11_pop, dep_lookup, by = c("datazone2011", "year")) %>%
-  group_by(year, sc_quin, datazone2011) %>%
+  group_by(year, sc_quin, datazone2011, sex, age_grp, age_grp2) %>%
   summarise(pop =sum(pop, na.rm=T)) %>% ungroup()
 
 # select data used to calculate rates
 copd_dep <- data_copd %>%
   filter(age > 64) %>%
-  mutate(age_grp = case_when(between(age, 65, 84) ~ 1,
-                             between(age, 85, 200) ~ 2),
+  create_agegroups() %>% 
+  add_epop() %>% 
+  mutate(age_grp2 = case_when(between(age, 65, 84) ~ 1,
+                             between(age, 85, Inf) ~ 2),
          sex = as.numeric(sex)) %>%
-  select(year, age_grp, sex, pc7) %>%
+  select(year, age_grp, age_grp2, sex, pc7) %>%
   filter(year == 2019)
   
 copd_dep_join <- left_join(copd_dep, postcode_lookup, "pc7") %>% 
   subset(!(is.na(datazone2011))) %>%
-  group_by(year, sex, age_grp, datazone2011) %>%
+  group_by(year, sex, age_grp, age_grp2, datazone2011) %>%
   count() %>%
   ungroup()
   
 copd_dep_join <- left_join(copd_dep_join, dz_dep_lookup) %>%
-  group_by(year, sex, age_grp, sc_quin) %>%
+  group_by(year, sex, age_grp, age_grp2, sc_quin) %>%
   summarise(n =sum(n, na.rm=T), pop =sum(pop, na.rm=T)) %>%
-  ungroup()
+  ungroup() %>% 
+  add_epop()
+
+copd_dep_join <- copd_dep_join %>% 
+  rename(numerator = n, denominator = pop)
+
+copd_dep_join6584 <- copd_dep_join %>% filter(age_grp2 == 1)
+copd_dep_join85plus <- copd_dep_join %>% filter(age_grp2 == 2)
+
+test <- create_rates(dataset = copd_dep_join6584, epop_total = 17000, sex = T, 
+                     cats = c("sc_quin") )
+
+test2 <- create_rates(dataset = copd_dep_join85plus, epop_total = 2500, sex = T, 
+                     cats = c("age_grp2", "sc_quin") )
 
 rates_depr <- copd_dep_join %>%
-  mutate(rate = n/pop*100000) 
+  group_by(year, age_grp2, sex, sc_quin) %>% 
+  summarise_at(c("numerator", "denominator"), sum, na.rm = T) %>% 
+  ungroup %>% 
+  mutate(rate = numerator/denominator*100000) 
 
 ##END
 
+add_epop <- function(dataset) {
+  dataset <- dataset %>% 
+    mutate(epop = recode(as.character(age_grp), # EASR age group pops
+                        "1"=17000, "2"=2500)) }
