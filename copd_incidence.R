@@ -1,4 +1,4 @@
-## WORK IN PROGRESS ####
+# Code used to update the COPD pages of the ScotPHO website
 
 ###############################################.
 # Functions/packages/filepaths ----
@@ -19,7 +19,7 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
 ###############################################.
 # SQL query for copd deaths: Scottish residents with a main cause of death of copd
 # extracting by date of registration and getting calendar and financial year
-# excluding unvalid sex cases
+# excluding unvalid sex cases as this is required by standardisation
 copd_deaths <- tbl_df(dbGetQuery(channel, statement=
   "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION cal_year, 
         UNDERLYING_CAUSE_OF_DEATH cod, AGE, SEX, DATE_OF_registration doadm,
@@ -56,13 +56,13 @@ copd_deaths_scotland <- copd_deaths %>% group_by(sex, age_grp, cal_year) %>%
 copd_deaths_scotland <- full_join(copd_deaths_scotland, scottish_population, 
                                   c("cal_year" = "year", "age_grp", "sex")) %>% 
   rename(numerator = n, denominator = pop, year = cal_year) %>%  # numerator and denominator used for calculation
-  filter(year<2020)
-  
-copd_deaths_scotland <- copd_deaths_scotland %>% add_epop() # EASR age group pops
+  filter(year<2020) %>% 
+  add_epop() # EASR age group pops
 
 # Converting NA's to 0s
 copd_deaths_scotland$numerator[is.na(copd_deaths_scotland$numerator)] <- 0 
 
+# Creating files for deaths
 copd_deaths_chart <- create_chart_data(dataset = copd_deaths_scotland, epop_total = 100000, 
                                        filename = "copd_deaths_scotland", year_type = "calendar")
 
@@ -70,7 +70,7 @@ copd_deaths_chart <- create_chart_data(dataset = copd_deaths_scotland, epop_tota
 # Part 2 - Extract data from SMRA on COPD admissions ----
 ###############################################.
 # SQL query extracts data one row per admission with an COPD diagnosis, by financial year. 
-# Excluding unvalid sex cases and non-scottish
+# Excluding unvalid sex cases as required for standardisation
 query_sql <- function(table) {
   paste0("SELECT distinct link_no linkNo, cis_marker CIS, max(age_in_years) age, 
             min(ADMISSION_DATE) doadm,  max(discharge_date) dodis, max(sex) sex, min(DR_POSTCODE) pc7, 
@@ -85,6 +85,7 @@ query_sql <- function(table) {
          GROUP BY link_no, cis_marker") 
 }
 
+# Extracting data from both SMR1 databases: current and historic
 data_copd <- rbind(tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR01_PI"))),
                      tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR01_HISTORIC"))) ) %>%
   setNames(tolower(names(.)))  # variables to lower case
@@ -94,21 +95,22 @@ postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scott
   setNames(tolower(names(.))) %>%   #variables to lower case
   select(pc7, datazone2011)
 
+# Joining with postcode lookup to bring dz2011 data
 data_copd_all <- left_join(data_copd, postcode_lookup, "pc7") %>% 
   subset(!(is.na(datazone2011))) %>%  #select out non-scottish
   mutate_if(is.character, factor) %>%  # converting variables into factors
   select(-pc7, -datazone2011)
 
-deaths_admissions <- bind_rows(copd_deaths, data_copd_all)
-
-deaths_admissions <- deaths_admissions %>% create_agegroups() %>% 
-  mutate(# age groups - over 10 and under 10
-  age_grp2 = case_when(age < 65 ~ 1, age > 64 & age < 85 ~ 2, age > 84 ~ 3))
+# Joining deaths data with admissions data to allow calculation of incidence
+deaths_admissions <- bind_rows(copd_deaths, data_copd_all) %>% 
+  create_agegroups() %>% #creating 5 year age band grouping for standardisation
+  # Creating a secondary age grouping as these are the grouping shown in charts
+  mutate(age_grp2 = case_when(age < 65 ~ 1, age > 64 & age < 85 ~ 2, age > 84 ~ 3))
 
 #10year lookback Calculate lookback-
 deaths_admissions <- deaths_admissions %>%
-  arrange(linkno, doadm) %>% 
-  group_by(linkno) %>% 
+  arrange(linkno, doadm) %>% #sort by date of admission
+  group_by(linkno) %>% # grouping by patient number for next calculations
   # calculating difference between first admission and each one of them. Converting into years
   mutate(diff_time = as.numeric(difftime(doadm, lag(dodis), units="days"))/365) %>%
   # select first admission/death per person with no previous admission, within 10 years
@@ -116,8 +118,9 @@ deaths_admissions <- deaths_admissions %>%
   ungroup() %>%
   filter(year > 2001) #selecting years required
 
-# calculate European age sex standardised rate
-deaths_admissions_scotland <- deaths_admissions %>% group_by(age_grp, age_grp2, sex, year) %>% 
+#Aggregating to obtain numbers per year, sex and age group
+deaths_admissions_scotland <- deaths_admissions %>% 
+  group_by(age_grp, age_grp2, sex, year) %>% 
   count() %>% ungroup() # calculate numerator
 
 # Joining data with population (denominator)
@@ -134,6 +137,7 @@ data_agegroups <- deaths_admissions_scotland %>% group_by(year, age_grp2, sex) %
   select(-age_grp) %>% 
   summarise_all(list(sum), na.rm =T) %>% rename(age_grp = age_grp2) %>% ungroup
 
+# Creating datasets for each age group as calculations need to be per age group (different total EPOPs)
 data_undersixtyfive <- data_agegroups %>% filter(age_grp == 1) # under 65
 data_sixtyfive_eightyfour <- data_agegroups %>% filter(age_grp == 2) # 65-84
 data_eightyfiveplus <- data_agegroups %>% filter(age_grp == 3) # 85+
@@ -152,80 +156,85 @@ eightyfiveplus_copd_chart <- create_chart_data(dataset = data_eightyfiveplus, ep
 ###############################################.
 # Part 3 - DEPRIVATION ----
 ###############################################.
-
+# Deprivation charts show rates of hospital admissions for COPD. 
+# It uses age-sex standardised rates.
+# This is different to the incidence methodology used above, and different to the
+# patient hospitalisation rates showed in the profiles.
+# The rationale of showing hospital admissions is pointing to the burden of disease
+# and the impact on health care in the different deprivation groups.
 # deprivation lookup to get datazones and quintiles
+
+# Bringing deprivation lookup prepared in the scotpho-lookups repository
 dep_lookup <- readRDS("/PHI_conf/ScotPHO/Profiles/Data/Lookups/Geography/deprivation_geography.rds") %>%
   rename(datazone2011 = datazone) %>%
   select(datazone2011, year, sc_quin) %>%
   filter(year == 2019)
 
-# population file to get population in each datazone
+# population file to get population in each datazone. Chaning format to allow merging
 dz11_pop <- readRDS("/conf/linkage/output/lookups/Unicode/Populations/Estimates/DataZone2011_pop_est_2011_2019.rds") %>%
   setNames(tolower(names(.))) %>%
   rename(age90 = age90plus) %>%
-  select(year, datazone2011, sex, age65:age90) %>%
+  select(year, datazone2011, sex, age65:age90) %>% # selecting only over 65
   filter(year == 2019) %>%
-  gather(age, pop, -c(year, datazone2011, sex)) %>%
+  gather(age, pop, -c(year, datazone2011, sex)) %>% # from wide to long format
   mutate(age = as.numeric(gsub("age", "", age)))
 
 dz11_pop <- dz11_pop %>%
-  create_agegroups() %>% 
-  mutate(age_grp2 = case_when(between(age, 65, 84) ~ 1,
-                             between(age, 85, 90) ~ 2),
-         sex = case_when(sex == "M" ~ 1, sex == "F" ~ 2)) %>%
-  group_by(year, datazone2011, age_grp, age_grp2, sex) %>%
-  summarise(pop =sum(pop, na.rm=T)) %>%  
+  create_agegroups() %>% #formating age groups and sex
+  mutate(sex = case_when(sex == "M" ~ 1, sex == "F" ~ 2)) %>%
+  group_by(year, datazone2011, age_grp, sex) %>%
+  summarise(pop =sum(pop, na.rm=T)) %>%  # aggregating by datazone and age/sex groups
   ungroup()
 
 # match datazone populations to quintiles
 dz_dep_lookup <- left_join(dz11_pop, dep_lookup, by = c("datazone2011", "year")) %>%
-  group_by(year, sc_quin, datazone2011, sex, age_grp, age_grp2) %>%
+  group_by(year, sc_quin, datazone2011, sex, age_grp) %>%
   summarise(pop =sum(pop, na.rm=T)) %>% ungroup()
 
 # select data used to calculate rates
 copd_dep <- data_copd %>%
-  filter(age > 64) %>%
-  create_agegroups() %>% 
-  add_epop() %>% 
-  mutate(age_grp2 = case_when(between(age, 65, 84) ~ 1,
-                             between(age, 85, Inf) ~ 2),
-         sex = as.numeric(sex)) %>%
-  select(year, age_grp, age_grp2, sex, pc7) %>%
-  filter(year == 2019)
-  
+  filter(age > 64) %>% #filtering only 65 and over
+  create_agegroups() %>% #creating 5 year age band groups
+  mutate(sex = as.numeric(sex)) %>%
+  select(year, age_grp, sex, pc7) %>%
+  filter(year == 2019) # only data for latest year available
+
+# Joining with postcode lookup to bring dz2011 info 
 copd_dep_join <- left_join(copd_dep, postcode_lookup, "pc7") %>% 
-  subset(!(is.na(datazone2011))) %>%
-  group_by(year, sex, age_grp, age_grp2, datazone2011) %>%
-  count() %>%
+  subset(!(is.na(datazone2011))) %>% # selecting out cases with no valid dz (no valid quintile therefore)
+  group_by(year, sex, age_grp, datazone2011) %>%
+  count() %>% # aggregating to facilitate merging afterwards
   ungroup()
   
-copd_dep_join <- left_join(copd_dep_join, dz_dep_lookup) %>%
-  group_by(year, sex, age_grp, age_grp2, sc_quin) %>%
-  summarise(n =sum(n, na.rm=T), pop =sum(pop, na.rm=T)) %>%
-  ungroup() %>% 
-  add_epop()
+# Joining admissions data with lookup including population and quintile
+# Lookup on left side to avoid missing DZs without admissions(as then we would be undercounting the pop)
+copd_dep_join <- left_join(dz_dep_lookup, copd_dep_join) %>%
+  group_by(year, sex, age_grp, sc_quin) %>% # aggregating by quintile, age and sex
+  summarise(n =sum(n, na.rm=T), pop =sum(pop, na.rm=T)) %>% ungroup() %>% 
+  add_epop() %>% #adding european population used for standardisation
+  # Creating 65-84 and 85+ groups that are shown in charts
+  mutate(age_grp2 = case_when(between(age_grp, 14, 17) ~ "65-84",
+                              between(age_grp, 18, 19) ~ "+85")) %>% 
+  rename(numerator = n, denominator = pop) # renaming to match format required by functions
 
-copd_dep_join <- copd_dep_join %>% 
-  rename(numerator = n, denominator = pop)
+# Creating a dataset for each age group to run in the functions
+copd_dep_6584 <- copd_dep_join %>% filter(age_grp2 == "65-84")
+copd_dep_85plus <- copd_dep_join %>% filter(age_grp2 == "+85")
 
-copd_dep_join6584 <- copd_dep_join %>% filter(age_grp2 == 1)
-copd_dep_join85plus <- copd_dep_join %>% filter(age_grp2 == 2)
+# Creating rates
+copd_dep_6584 <- create_rates(copd_dep_6584, epop_total = 17000, sex = T, 
+                     cats = c("sc_quin", "age_grp2")) 
 
-test <- create_rates(dataset = copd_dep_join6584, epop_total = 17000, sex = T, 
-                     cats = c("sc_quin") )
+copd_dep_85plus <- create_rates(copd_dep_85plus, epop_total = 2500, sex = T, 
+                     cats = c("age_grp2", "sc_quin"))
 
-test2 <- create_rates(dataset = copd_dep_join85plus, epop_total = 2500, sex = T, 
-                     cats = c("age_grp2", "sc_quin") )
+# Joining both files and formatting to get what required for chart
+copd_dep_chart <- rbind(copd_dep_6584, copd_dep_85plus) %>% 
+  mutate(sex = recode(sex, "1" = "Male", "2" = "Female"),
+         age_sex = paste(sex, age_grp2)) %>% 
+  make_year_labels(year_type = "financial")
 
-rates_depr <- copd_dep_join %>%
-  group_by(year, age_grp2, sex, sc_quin) %>% 
-  summarise_at(c("numerator", "denominator"), sum, na.rm = T) %>% 
-  ungroup %>% 
-  mutate(rate = numerator/denominator*100000) 
+# Next steps: 
+# Finish formatting as required
 
 ##END
-
-add_epop <- function(dataset) {
-  dataset <- dataset %>% 
-    mutate(epop = recode(as.character(age_grp), # EASR age group pops
-                        "1"=17000, "2"=2500)) }
