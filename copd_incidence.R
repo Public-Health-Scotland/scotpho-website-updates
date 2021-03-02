@@ -177,7 +177,7 @@ dz11_pop <- readRDS("/conf/linkage/output/lookups/Unicode/Populations/Estimates/
   select(year, datazone2011, sex, age65:age90) %>% # selecting only over 65
   filter(year == 2019) %>%
   gather(age, pop, -c(year, datazone2011, sex)) %>% # from wide to long format
-  mutate(age = as.numeric(gsub("age", "", age)))
+  mutate(age = as.numeric(gsub("age", "", age))) # remove "age" from age variable values and make numeric
 
 dz11_pop <- dz11_pop %>%
   create_agegroups() %>% #formating age groups and sex
@@ -233,6 +233,16 @@ copd_dep_chart <- rbind(copd_dep_6584, copd_dep_85plus) %>%
   mutate(sex = recode(sex, "1" = "Male", "2" = "Female"),
          age_sex = paste(sex, age_grp2)) %>% 
   make_year_labels(year_type = "financial")
+
+copd_dep_chart <- copd_dep_chart %>%
+  select(sc_quin, rate, age_sex) %>%
+  filter(age_sex == "Male 65-84" | age_sex == "Male +85") %>%
+  rename(class1 = sc_quin, measure = rate, class2 = age_sex)
+####continue from here on 08/03
+  
+
+write_csv(copd_dep_chart, paste0(data_folder, "copd_dep_chart_data.csv"))
+
 
 # Next steps: 
 # Finish formatting as required
