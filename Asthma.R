@@ -1,5 +1,5 @@
 # Code to analyse asthma incidence and asthma deaths data from SMRA for publication on scotPHO website
-# current analysis for september 2019 website update
+# current analysis for march 2021 website update
 
 # Part 1 - deaths file - data from SMRA
 # Part 2 - Extract data from SMRA on asthma admissions
@@ -12,7 +12,7 @@
 source("1.analysis_functions.R")
 
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/december2020_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/2021 March Update/Data/"
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
