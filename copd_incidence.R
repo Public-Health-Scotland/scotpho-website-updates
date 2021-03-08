@@ -234,15 +234,23 @@ copd_dep_chart <- rbind(copd_dep_6584, copd_dep_85plus) %>%
          age_sex = paste(sex, age_grp2)) %>% 
   make_year_labels(year_type = "financial")
 
-copd_dep_chart <- copd_dep_chart %>%
+# selecting and renaming fields to match data for populating male deprivation chart (chart 1)
+copd_dep_chart1 <- copd_dep_chart %>%
   select(sc_quin, rate, age_sex) %>%
   filter(age_sex == "Male 65-84" | age_sex == "Male +85") %>%
   rename(class1 = sc_quin, measure = rate, class2 = age_sex)
-####continue from here on 08/03
-  
 
-write_csv(copd_dep_chart, paste0(data_folder, "copd_dep_chart_data.csv"))
 
+write_csv(copd_dep_chart1, paste0(data_folder, "copd_deprivation_chart1.csv"))
+
+# selecting and renaming fields to match data for populating female deprivation chart (chart 2)
+copd_dep_chart2 <- copd_dep_chart %>%
+  select(sc_quin, rate, age_sex) %>%
+  filter(age_sex == "Female 65-84" | age_sex == "Female +85") %>%
+  rename(class1 = sc_quin, measure = rate, class2 = age_sex)
+
+
+write_csv(copd_dep_chart2, paste0(data_folder, "copd_deprivation_chart2.csv"))
 
 # Next steps: 
 # Finish formatting as required
