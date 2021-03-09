@@ -22,14 +22,13 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
 ms_deaths <- tbl_df(dbGetQuery(channel, statement=
       "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION cal_year, 
       UNDERLYING_CAUSE_OF_DEATH cod, AGE, SEX, DATE_OF_registration doadm,
-      DATE_OF_registration dodis,
+      DATE_OF_registration dodis, country_of_residence, 
       CASE WHEN extract(month from date_of_registration) > 3 
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
       FROM ANALYSIS.GRO_DEATHS_C
       WHERE date_of_registration between '1 January 2003' and '31 December 2019'
-      AND country_of_residence ='XS'
-      AND sex <> 9
+            AND sex <> 9
       AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('G35', '340') 
       or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-340')")) %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
@@ -105,6 +104,9 @@ data_ms_all <- left_join(data_ms, postcode_lookup, "pc7") %>%
   select(-pc7, -datazone2011)
 
 # join admissions and deaths data together
+ms_deaths <- ms_deaths %>%
+  filter(country_of_residence == "XS")
+
 deaths_admissions <- bind_rows(ms_deaths, data_ms_all)
 
 deaths_admissions <- deaths_admissions %>% create_agegroups() %>% 
