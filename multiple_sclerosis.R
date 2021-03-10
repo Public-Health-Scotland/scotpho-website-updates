@@ -166,29 +166,29 @@ write_csv(seccare_chart1, paste0(data_folder, filename = "ms_seccare_chart1_PRA"
 
 
 # Secondary Care - Chart 2 (required for PRA)
-undertwentyfive_ms_chart <- create_chart_data(dataset = data_undertwentyfive, epop_total = 27500, filename = "ms_undertwentyfive_chart")
+undertwentyfive_ms <- create_chart_data(dataset = data_undertwentyfive, epop_total = 27500, filename = "ms_undertwentyfive_temp")
 
-twentyfive_fiftynine_ms_chart <- create_chart_data(dataset = data_twentyfive_fiftynine, epop_total = 47000, filename = "ms_twentyfive_fiftynine_chart")
+twentyfive_fiftynine_ms <- create_chart_data(dataset = data_twentyfive_fiftynine, epop_total = 47000, filename = "ms_twentyfive_fiftynine_temp")
 
-sixtyplus_ms_chart <- create_chart_data(dataset = data_sixtyplus, epop_total = 25500, filename = "ms_sixtyplus_chart")
+sixtyplus_ms <- create_chart_data(dataset = data_sixtyplus, epop_total = 25500, filename = "ms_sixtyplus_temp")
 
 
 # create age-sex variable to allow files to be added together
-undertwentyfive_ms_chart <- undertwentyfive_ms_chart %>%
+undertwentyfive_ms<- undertwentyfive_ms %>%
   mutate(class1 = case_when(sex == "Male" ~ "Male <25", 
                             sex == "Female" ~ "Female <25"))
 
-twentyfive_fiftynine_ms_chart <- twentyfive_fiftynine_ms_chart %>%
+twentyfive_fiftynine_ms <- twentyfive_fiftynine_ms %>%
   mutate(class1 = case_when(sex == "Male" ~ "Male 25-59", 
                             sex == "Female" ~ "Female 25-59"))
 
-sixtyplus_ms_chart <- sixtyplus_ms_chart %>%
+sixtyplus_ms <- sixtyplus_ms_ %>%
   mutate(class1 = case_when(sex == "Male" ~ "Male 60+", 
                             sex == "Female" ~ "Female 60+"))
 
 # combine and format output for plotly
-seccare_chart2 <- bind_rows(undertwentyfive_ms_chart, twentyfive_fiftynine_ms_chart,
-                                sixtyplus_ms_chart) %>%
+seccare_chart2 <- bind_rows(undertwentyfive_ms, twentyfive_fiftynine_ms,
+                                sixtyplus_ms) %>%
   select(-sex) %>%
   filter(year != "2002/03") %>%
   rename(class2 = year,
