@@ -32,7 +32,7 @@ asthma_deaths <- tbl_df(dbGetQuery(channel, statement=
           THEN extract(year from date_of_registration)
           ELSE extract(year from date_of_registration) -1 END as year
     FROM ANALYSIS.GRO_DEATHS_C
-    WHERE date_of_registration between '1 January 2002' and '31 December 2019'
+    WHERE YEAR_OF_REGISTRATION between '2002' and '2019'
         AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('J45','J46', '493') 
             or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-493')")) %>%
   setNames(tolower(names(.)))  # variables to lower case
