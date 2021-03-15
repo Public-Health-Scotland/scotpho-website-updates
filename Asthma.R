@@ -1,5 +1,5 @@
 # Code to analyse asthma incidence and asthma deaths data from SMRA for publication on scotPHO website
-# current analysis for september 2019 website update
+# current analysis for march 2021 website update
 
 # Part 1 - deaths file - data from SMRA
 # Part 2 - Extract data from SMRA on asthma admissions
@@ -12,7 +12,7 @@
 source("1.analysis_functions.R")
 
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/december2020_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/2021 March Update/Data/"
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -25,14 +25,14 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
 ###############################################.
 # SQL query for asthma deaths: Scottish residents with a main cause of death of asthma
 # extracting by date of registration and getting both calendar and financial year
+# Note this is designed to match asthma data in NRS Vital Events Reference Tables 6
 asthma_deaths <- tbl_df(dbGetQuery(channel, statement=
   "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION cal_year, UNDERLYING_CAUSE_OF_DEATH cod, AGE, SEX, DATE_OF_registration doadm,
         CASE WHEN extract(month from date_of_registration) > 3 
           THEN extract(year from date_of_registration)
           ELSE extract(year from date_of_registration) -1 END as year
     FROM ANALYSIS.GRO_DEATHS_C
-    WHERE date_of_registration between '1 January 2002' and '31 December 2019'
-        AND country_of_residence ='XS'
+    WHERE YEAR_OF_REGISTRATION between '2002' and '2019'
         AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('J45','J46', '493') 
             or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-493')")) %>%
   setNames(tolower(names(.)))  # variables to lower case
