@@ -76,7 +76,7 @@ epilepsy_deaths_scotland <- bind_rows(epilepsy_deaths_scotland_all, epilepsy_dea
  
 
 # save as csv - for Chart 1 in Mortality section (does not require PRA)
-write_csv(epilepsy_deaths_scotland, paste0(data_folder, filename = "Epilepsy_incidence_deaths_Chart1", ".csv"))
+write_csv(epilepsy_deaths_scotland, paste0(data_folder, filename = "Epilepsy_incidence_deaths_Chart_1", ".csv"))
 
 
 
