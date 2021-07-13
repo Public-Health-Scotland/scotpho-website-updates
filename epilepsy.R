@@ -1,4 +1,4 @@
-## WORK IN PROGRESS ###
+## Epilepsy - ScotPHO website update ###
 
 ###############################################.
 # Functions/packages/filepaths ----
@@ -11,8 +11,13 @@ library(odbc)
 
 source("1.analysis_functions.R")
 
-# file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Epilepsy/march2021_update/"
+# file path for output files - update quarter
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Epilepsy/202103_update/"
+
+# file path for shiny output - update analyst's folder
+shiny_folder <- "/PHI_conf/ScotPHO/1.Analysts_space/Catherine/epilepsy-shiny-chart/shiny_app/data/"
+
+# check lookups at lines 51 and 115.
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -76,8 +81,8 @@ epilepsy_deaths_scotland <- bind_rows(epilepsy_deaths_scotland_all, epilepsy_dea
  
 
 # save as csv - for Chart 1 in Mortality section (does not require PRA)
+# File name is the name that is required for plotly deaths chart
 write_csv(epilepsy_deaths_scotland, paste0(data_folder, filename = "Epilepsy_incidence_deaths_Chart_1", ".csv"))
-
 
 
 
@@ -165,57 +170,66 @@ data_fifteen_fiftyfour <- data_agegroups %>% filter(age_grp == 2) # 15-54
 data_fiftyfiveplus <- data_agegroups %>% filter(age_grp == 3) # 55+
 
 
-# run the create rates function for each cut
-# export in format for website chart update (year, sex, rate in csv file) and save
 
-# Secondary Care - Chart 1 (required for PRA)
+### Secondary Care - Chart 1 - incidence by sex and agegroup chart (required for PRA)
+# This chart has been moved to shiny and combines sex and agegrp data, which was 
+# previously in separate charts
+
+# Incidence by sex
 all_epilepsy_chart <- create_chart_data(dataset = deaths_admissions_scotland, 
-                                  epop_total = 100000, filename = "Epilepsy_incidence_sex_Chart_2_PRA")
+                                  epop_total = 100000, filename = "Epilepsy_incidence_agesex_Chart_1")
+                                # This file will be overwritten later by combined agesex output
 
-# format output for plotly
-seccare_chart1 <- all_epilepsy_chart %>% 
+# create sex_agegrp variable to allow files to be added together
+incidence_sex <- all_epilepsy_chart %>% 
   filter(year >= "2008/09") %>%
-  rename(class2 = year,
-         measure = rate,
-         class1 = sex) %>%
-  arrange(class1, class2)
-
-write_csv(seccare_chart1, paste0(data_folder, filename = "Epilepsy_incidence_sex_Chart_2_PRA", ".csv"))
+  mutate(agegrp = "All ages",
+         sex_agegrp = paste(sex, agegrp, sep=" - "),
+         rate = round(rate, 1))
 
 
-
-# Secondary Care - Chart 2 (required for PRA)
+# Incidence by sex and age group
 underfifteen_epilepsy <- create_chart_data(dataset = data_underfifteen, epop_total = 16000, filename = "epilepsy_underfifteen_temp")
 
 fifteen_fiftyfour_epilepsy <- create_chart_data(dataset = data_fifteen_fiftyfour, epop_total = 52000, filename = "epilepsy_fifteen_fiftyfour_temp")
 
 fiftyfiveplus_epilepsy <- create_chart_data(dataset = data_fiftyfiveplus, epop_total = 32000, filename = "epilepsy_fiftyfiveplus_temp")
+# Once this code has been ran, the saved .csvs can be deleted as they are not required.
 
-
-# create age-sex variable to allow files to be added together
+# create sex_agegrp variable to allow files to be added together
 underfifteen_epilepsy <- underfifteen_epilepsy %>%
-  mutate(class1 = case_when(sex == "Male" ~ "Male <15", 
-                            sex == "Female" ~ "Female <15"))
+  mutate(agegrp = "<15",
+         sex_agegrp = paste(sex, agegrp, sep =" "),
+         rate = round(rate, 1))
 
 fifteen_fiftyfour_epilepsy <- fifteen_fiftyfour_epilepsy %>%
-  mutate(class1 = case_when(sex == "Male" ~ "Male 15-54", 
-                            sex == "Female" ~ "Female 15-54"))
+  mutate(agegrp = "15-54",
+         sex_agegrp = paste(sex, agegrp, sep = " "),
+         rate = round(rate, 1))
 
 fiftyfiveplus_epilepsy <- fiftyfiveplus_epilepsy %>%
-  mutate(class1 = case_when(sex == "Male" ~ "Male 55+", 
-                            sex == "Female" ~ "Female 55+"))
+  mutate(agegrp = "55+",
+         sex_agegrp = paste(sex,agegrp, sep = " "),
+         rate = round(rate, 1))
 
-# combine and format output for plotly
-seccare_chart2 <- bind_rows(underfifteen_epilepsy, fifteen_fiftyfour_epilepsy,
-                            fiftyfiveplus_epilepsy) %>%
-  select(-sex) %>%
+# combine all age and sex incidence outputs and format for shiny
+epilepsy_incidence <- bind_rows(underfifteen_epilepsy, fifteen_fiftyfour_epilepsy,
+                            fiftyfiveplus_epilepsy, incidence_sex) %>%
+  select(year, sex_agegrp, sex, agegrp, rate) %>%
   filter(year >= "2008/09") %>%
-  rename(class2 = year,
-         measure = rate) %>%
-  arrange(class1, class2)
+  arrange(sex, agegrp, year)
 
-write_csv(seccare_chart2, paste0(data_folder, filename = "Epilepsy_incidence_age_sex_Chart_3_PRA", ".csv"))
+# Save a copy alongside deaths data
+write_csv(epilepsy_incidence, paste0(data_folder, filename = "Epilepsy_incidence_agesex_Chart_1", ".csv"))
 
+
+# Next steps:
+# If you don't have it already, clone the epilepsy-shiny-chart repo from github
+# https://github.com/Public-Health-Scotland/epilepsy-shiny-chart
+
+
+# Save data to shiny_app folder
+saveRDS(epilepsy_incidence, file = paste0(shiny_folder,"epilepsy_incidence.rds"))
 
 ##END
 
