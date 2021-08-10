@@ -22,14 +22,13 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
 ms_deaths <- tbl_df(dbGetQuery(channel, statement=
       "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION cal_year, 
       UNDERLYING_CAUSE_OF_DEATH cod, AGE, SEX, DATE_OF_registration doadm,
-      DATE_OF_registration dodis,
+      DATE_OF_registration dodis, country_of_residence, 
       CASE WHEN extract(month from date_of_registration) > 3 
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
       FROM ANALYSIS.GRO_DEATHS_C
       WHERE date_of_registration between '1 January 2003' and '31 December 2019'
-      AND country_of_residence ='XS'
-      AND sex <> 9
+            AND sex <> 9
       AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('G35', '340') 
       or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-340')")) %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
@@ -105,6 +104,9 @@ data_ms_all <- left_join(data_ms, postcode_lookup, "pc7") %>%
   select(-pc7, -datazone2011)
 
 # join admissions and deaths data together
+ms_deaths <- ms_deaths %>%
+  filter(country_of_residence == "XS")
+
 deaths_admissions <- bind_rows(ms_deaths, data_ms_all)
 
 deaths_admissions <- deaths_admissions %>% create_agegroups() %>% 
@@ -164,29 +166,29 @@ write_csv(seccare_chart1, paste0(data_folder, filename = "ms_seccare_chart1_PRA"
 
 
 # Secondary Care - Chart 2 (required for PRA)
-undertwentyfive_ms_chart <- create_chart_data(dataset = data_undertwentyfive, epop_total = 27500, filename = "ms_undertwentyfive_chart")
+undertwentyfive_ms <- create_chart_data(dataset = data_undertwentyfive, epop_total = 27500, filename = "ms_undertwentyfive_temp")
 
-twentyfive_fiftynine_ms_chart <- create_chart_data(dataset = data_twentyfive_fiftynine, epop_total = 47000, filename = "ms_twentyfive_fiftynine_chart")
+twentyfive_fiftynine_ms <- create_chart_data(dataset = data_twentyfive_fiftynine, epop_total = 47000, filename = "ms_twentyfive_fiftynine_temp")
 
-sixtyplus_ms_chart <- create_chart_data(dataset = data_sixtyplus, epop_total = 25500, filename = "ms_sixtyplus_chart")
+sixtyplus_ms <- create_chart_data(dataset = data_sixtyplus, epop_total = 25500, filename = "ms_sixtyplus_temp")
 
 
 # create age-sex variable to allow files to be added together
-undertwentyfive_ms_chart <- undertwentyfive_ms_chart %>%
+undertwentyfive_ms<- undertwentyfive_ms %>%
   mutate(class1 = case_when(sex == "Male" ~ "Male <25", 
                             sex == "Female" ~ "Female <25"))
 
-twentyfive_fiftynine_ms_chart <- twentyfive_fiftynine_ms_chart %>%
+twentyfive_fiftynine_ms <- twentyfive_fiftynine_ms %>%
   mutate(class1 = case_when(sex == "Male" ~ "Male 25-59", 
                             sex == "Female" ~ "Female 25-59"))
 
-sixtyplus_ms_chart <- sixtyplus_ms_chart %>%
+sixtyplus_ms <- sixtyplus_ms_ %>%
   mutate(class1 = case_when(sex == "Male" ~ "Male 60+", 
                             sex == "Female" ~ "Female 60+"))
 
 # combine and format output for plotly
-seccare_chart2 <- bind_rows(undertwentyfive_ms_chart, twentyfive_fiftynine_ms_chart,
-                                sixtyplus_ms_chart) %>%
+seccare_chart2 <- bind_rows(undertwentyfive_ms, twentyfive_fiftynine_ms,
+                                sixtyplus_ms) %>%
   select(-sex) %>%
   filter(year != "2002/03") %>%
   rename(class2 = year,

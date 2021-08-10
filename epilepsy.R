@@ -1,4 +1,4 @@
-## WORK IN PROGRESS ###
+## Epilepsy - ScotPHO website update ###
 
 ###############################################.
 # Functions/packages/filepaths ----
@@ -11,8 +11,13 @@ library(odbc)
 
 source("1.analysis_functions.R")
 
-# file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Epilepsy/march2021_update/"
+# file path for output files - update quarter
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Epilepsy/202103_update/"
+
+# file path for shiny output - update analyst's folder
+shiny_folder <- "/PHI_conf/ScotPHO/1.Analysts_space/Catherine/epilepsy-shiny-chart/shiny_app/data/"
+
+# check lookups at lines 51 and 115.
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -27,13 +32,12 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
 # extracting by date of registration and getting calendar year
 epilepsy_deaths <- tbl_df(dbGetQuery(channel, statement=
       "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION cal_year, UNDERLYING_CAUSE_OF_DEATH cod, AGE, SEX, DATE_OF_registration doadm,
-      DATE_OF_registration dodis,
+      DATE_OF_registration dodis, country_of_residence,
       CASE WHEN extract(month from date_of_registration) > 3 
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
       FROM ANALYSIS.GRO_DEATHS_C
       WHERE date_of_registration between '1 January 1974' and '31 December 2019'
-      AND country_of_residence ='XS'
       AND sex <> 9
       AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('G40','G41', '345') 
       or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-345')")) %>%
@@ -54,23 +58,32 @@ scottish_population <- scottish_population %>% create_agegroups() %>%
   group_by(age_grp, sex, year) %>% 
   summarise(pop =sum(pop)) %>% ungroup()
 
-# calculate the number of deaths (EASR not required for deaths data on scotpho website)
-epilepsy_deaths_scotland <- epilepsy_deaths %>% group_by(sex, age_grp, cal_year) %>% 
+
+# aggregate to Scotland total number of deaths by year
+epilepsy_deaths_scotland_all <- epilepsy_deaths %>% group_by(cal_year) %>% 
+  count() %>% 
+  ungroup()
+
+
+# aggregate to Scotland total number of deaths by year and sex
+epilepsy_deaths_scotland <- epilepsy_deaths %>% group_by(sex, cal_year) %>% 
   count() %>% # calculate numerator
   ungroup()
 
-# Joining data with population (denominator)
-epilepsy_deaths_scotland <- full_join(epilepsy_deaths_scotland, scottish_population, 
-                                  c("cal_year" = "year", "age_grp", "sex")) %>% 
-  rename(numerator = n, denominator = pop, year = cal_year) # numerator and denominator used for calculation
+# combine and format output for plotly
+epilepsy_deaths_scotland <- bind_rows(epilepsy_deaths_scotland_all, epilepsy_deaths_scotland) %>%
+  mutate(class1 = case_when(sex == 1 ~ "Male", sex == 2 ~ "Female",
+                            is.na(sex) ~ "All")) %>%
+  filter(cal_year >= "2008") %>%
+  rename("class2" = "cal_year",
+         "measure" = "n") %>%
+  select(-sex)
+ 
 
-epilepsy_deaths_scotland <- epilepsy_deaths_scotland %>% add_epop() # EASR age group pops
+# save as csv - for Chart 1 in Mortality section (does not require PRA)
+# File name is the name that is required for plotly deaths chart
+write_csv(epilepsy_deaths_scotland, paste0(data_folder, filename = "Epilepsy_incidence_deaths_Chart_1", ".csv"))
 
-# Converting NA's to 0s
-epilepsy_deaths_scotland$numerator[is.na(epilepsy_deaths_scotland$numerator)] <- 0 
-
-epilepsy_deaths_chart <- create_chart_data(dataset = epilepsy_deaths_scotland, epop_total = 100000, 
-                                       filename = "epilepsy_deaths_scotland", year_type = "calendar")
 
 
 ###############################################.
@@ -108,6 +121,11 @@ data_epilepsy <- left_join(data_epilepsy, postcode_lookup, "pc7") %>%
   mutate_if(is.character, factor) %>%  # converting variables into factors
   select(-pc7, -datazone2011)
 
+# filter out non-scottish residents from deaths data
+epilepsy_deaths <- epilepsy_deaths %>%
+  filter(country_of_residence == "XS")
+
+# combine deaths adnd admissions data
 deaths_admissions <- bind_rows(epilepsy_deaths, data_epilepsy)
 
 deaths_admissions <- deaths_admissions %>% create_agegroups() %>% 
@@ -151,16 +169,67 @@ data_underfifteen <- data_agegroups %>% filter(age_grp == 1) # under 15
 data_fifteen_fiftyfour <- data_agegroups %>% filter(age_grp == 2) # 15-54
 data_fiftyfiveplus <- data_agegroups %>% filter(age_grp == 3) # 55+
 
-# run the create rates function for each cut
-# export in format for website chart update (year, sex, rate in csv file) and save
 
-all_epilepsy_chart <- create_chart_data(dataset = deaths_admissions_scotland, epop_total = 100000, filename = "epilepsy_scotland_all_chart")
 
-underfifteen_epilepsy_chart <- create_chart_data(dataset = data_underfifteen, epop_total = 16000, filename = "epilepsy_underfifteen_chart")
+### Secondary Care - Chart 1 - incidence by sex and agegroup chart (required for PRA)
+# This chart has been moved to shiny and combines sex and agegrp data, which was 
+# previously in separate charts
 
-fifteen_fiftyfour_epilepsy_chart <- create_chart_data(dataset = data_fifteen_fiftyfour, epop_total = 52000, filename = "epilepsy_fifteen_fiftyfour_chart")
+# Incidence by sex
+all_epilepsy_chart <- create_chart_data(dataset = deaths_admissions_scotland, 
+                                  epop_total = 100000, filename = "Epilepsy_incidence_agesex_Chart_1")
+                                # This file will be overwritten later by combined agesex output
 
-fiftyfiveplus_epilepsy_chart <- create_chart_data(dataset = data_fiftyfiveplus, epop_total = 32000, filename = "epilepsy_fiftyfiveplus_chart")
+# create sex_agegrp variable to allow files to be added together
+incidence_sex <- all_epilepsy_chart %>% 
+  filter(year >= "2008/09") %>%
+  mutate(agegrp = "All ages",
+         sex_agegrp = paste(sex, agegrp, sep=" - "),
+         rate = round(rate, 1))
 
-write.csv(all_epilepsy_chart, file=paste0(data_folder, "all_epilepsy_chart.csv"))
+
+# Incidence by sex and age group
+underfifteen_epilepsy <- create_chart_data(dataset = data_underfifteen, epop_total = 16000, filename = "epilepsy_underfifteen_temp")
+
+fifteen_fiftyfour_epilepsy <- create_chart_data(dataset = data_fifteen_fiftyfour, epop_total = 52000, filename = "epilepsy_fifteen_fiftyfour_temp")
+
+fiftyfiveplus_epilepsy <- create_chart_data(dataset = data_fiftyfiveplus, epop_total = 32000, filename = "epilepsy_fiftyfiveplus_temp")
+# Once this code has been ran, the saved .csvs can be deleted as they are not required.
+
+# create sex_agegrp variable to allow files to be added together
+underfifteen_epilepsy <- underfifteen_epilepsy %>%
+  mutate(agegrp = "<15",
+         sex_agegrp = paste(sex, agegrp, sep =" "),
+         rate = round(rate, 1))
+
+fifteen_fiftyfour_epilepsy <- fifteen_fiftyfour_epilepsy %>%
+  mutate(agegrp = "15-54",
+         sex_agegrp = paste(sex, agegrp, sep = " "),
+         rate = round(rate, 1))
+
+fiftyfiveplus_epilepsy <- fiftyfiveplus_epilepsy %>%
+  mutate(agegrp = "55+",
+         sex_agegrp = paste(sex,agegrp, sep = " "),
+         rate = round(rate, 1))
+
+# combine all age and sex incidence outputs and format for shiny
+epilepsy_incidence <- bind_rows(underfifteen_epilepsy, fifteen_fiftyfour_epilepsy,
+                            fiftyfiveplus_epilepsy, incidence_sex) %>%
+  select(year, sex_agegrp, sex, agegrp, rate) %>%
+  filter(year >= "2008/09") %>%
+  arrange(sex, agegrp, year)
+
+# Save a copy alongside deaths data
+write_csv(epilepsy_incidence, paste0(data_folder, filename = "Epilepsy_incidence_agesex_Chart_1", ".csv"))
+
+
+# Next steps:
+# If you don't have it already, clone the epilepsy-shiny-chart repo from github
+# https://github.com/Public-Health-Scotland/epilepsy-shiny-chart
+
+
+# Save data to shiny_app folder
+saveRDS(epilepsy_incidence, file = paste0(shiny_folder,"epilepsy_incidence.rds"))
+
+##END
 
