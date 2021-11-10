@@ -12,10 +12,10 @@ library(odbc)
 source("1.analysis_functions.R")
 
 # file path for output files - update quarter
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Epilepsy/202103_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Epilepsy/202112_update/"
 
 # file path for shiny output - update analyst's folder
-shiny_folder <- "/PHI_conf/ScotPHO/1.Analysts_space/Catherine/epilepsy-shiny-chart/shiny_app/data/"
+shiny_folder <- "/PHI_conf/ScotPHO/1.Analysts_space/Peter/epilepsy-shiny-chart/shiny_app/data/"
 
 # check lookups at lines 51 and 115.
 
@@ -37,7 +37,7 @@ epilepsy_deaths <- tbl_df(dbGetQuery(channel, statement=
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
       FROM ANALYSIS.GRO_DEATHS_C
-      WHERE date_of_registration between '1 January 1974' and '31 December 2019'
+      WHERE date_of_registration between '1 January 1974' and '31 December 2020'
       AND sex <> 9
       AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('G40','G41', '345') 
       or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-345')")) %>%
@@ -48,9 +48,9 @@ epilepsy_deaths <- epilepsy_deaths %>% create_agegroups()
 
 # aggregating to scottish total population
 # bring populations file 
-scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2019.rds') %>%
+scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2020.rds') %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
-  subset(year > 2002 & year <= 2019) 
+  subset(year > 2002 & year <= 2020) 
 
 # recode age groups
 scottish_population <- scottish_population %>% create_agegroups() %>% 
@@ -98,7 +98,7 @@ query_sql <- function(table) {
          THEN extract(year from admission_date)
          ELSE extract(year from admission_date) -1 END) as year
          FROM ", table,
-         " WHERE admission_date between '1 April 1994' and '31 March 2020' 
+         " WHERE admission_date between '1 April 1994' and '31 March 2021' 
          AND hbtreat_currentdate is not null
          AND substr(hbtreat_currentdate,0,4) != 'S082'
          AND sex in ('1','2')
@@ -112,7 +112,7 @@ data_epilepsy <- rbind(tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS
   setNames(tolower(names(.)))  # variables to lower case
 
 # Bringing datazone info to exclude non-Scottish.
-postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2020_2.rds') %>% 
+postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2021_2.rds') %>% 
   setNames(tolower(names(.))) %>%   #variables to lower case
   select(pc7, datazone2011)
 
