@@ -37,7 +37,7 @@ ms_deaths <- tbl_df(dbGetQuery(channel, statement=
 # bring populations file 
 scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2020.rds') %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
-  subset(year > 2002 & year <= 2020) 
+  subset(year > 2002 & year <= 2020)
 
 # aggregating to scottish total population
 # recode age groups
