@@ -6,7 +6,7 @@
 source("1.analysis_functions.R")
 
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Multiple Sclerosis/march2021_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Multiple Sclerosis/202112_update/"
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -27,7 +27,7 @@ ms_deaths <- tbl_df(dbGetQuery(channel, statement=
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
       FROM ANALYSIS.GRO_DEATHS_C
-      WHERE date_of_registration between '1 January 2003' and '31 December 2019'
+      WHERE date_of_registration between '1 January 2003' and '31 December 2020'
             AND sex <> 9
       AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('G35', '340') 
       or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-340')")) %>%
@@ -35,9 +35,9 @@ ms_deaths <- tbl_df(dbGetQuery(channel, statement=
   create_agegroups() # recode age groups for standardisation
 
 # bring populations file 
-scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2019.rds') %>%
+scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2020.rds') %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
-  subset(year > 2002 & year <= 2019) 
+  subset(year > 2002 & year <= 2020) 
 
 # aggregating to scottish total population
 # recode age groups
@@ -82,7 +82,7 @@ query_sql <- function(table) {
                 THEN extract(year from admission_date)
                 ELSE extract(year from admission_date) -1 END) as year
          FROM ", table,
-         " WHERE admission_date between '1 April 1991' and '31 March 2020' 
+         " WHERE admission_date between '1 April 1991' and '31 March 2021' 
          AND sex in ('1','2')
          AND (substr(main_condition,0,3) = any('G35', '340') 
          OR substr(main_condition,0,4) = '-340')
@@ -94,7 +94,7 @@ data_ms <- rbind(tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR01
   setNames(tolower(names(.)))  # variables to lower case
 
 # Bringing datazone info to exclude non-Scottish.
-postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2020_2.rds') %>% 
+postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2021_2.rds') %>% 
   setNames(tolower(names(.))) %>%   #variables to lower case
   select(pc7, datazone2011)
 
@@ -182,7 +182,7 @@ twentyfive_fiftynine_ms <- twentyfive_fiftynine_ms %>%
   mutate(class1 = case_when(sex == "Male" ~ "Male 25-59", 
                             sex == "Female" ~ "Female 25-59"))
 
-sixtyplus_ms <- sixtyplus_ms_ %>%
+sixtyplus_ms <- sixtyplus_ms %>%
   mutate(class1 = case_when(sex == "Male" ~ "Male 60+", 
                             sex == "Female" ~ "Female 60+"))
 
