@@ -181,7 +181,8 @@ plot_asthma <- plot_ly(data=data_plot, x=~class2, y = ~round(measure,1),
 
 plot_asthma
 
-export(p =  plot_asthma, file = "asthma_pub_summary.png", zoom = 4)
+export(p = plot_asthma, file = paste0(data_folder, "asthma_pub_summary.png"),
+       zoom = 4)
 
 ##END
 
