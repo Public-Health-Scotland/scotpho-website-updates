@@ -168,20 +168,20 @@ eightyfiveplus_copd_chart <- create_chart_data(dataset = data_eightyfiveplus, ep
 dep_lookup <- readRDS("/PHI_conf/ScotPHO/Profiles/Data/Lookups/Geography/deprivation_geography.rds") %>%
   rename(datazone2011 = datazone) %>%
   select(datazone2011, year, sc_quin) %>%
-  filter(year == 2019)
+  filter(year == 2020)
 
 # population file to get population in each datazone. Chaning format to allow merging
 dz11_pop <- readRDS("/conf/linkage/output/lookups/Unicode/Populations/Estimates/DataZone2011_pop_est_2011_2020.rds") %>%
   setNames(tolower(names(.))) %>%
   rename(age90 = age90plus) %>%
   select(year, datazone2011, sex, age65:age90) %>% # selecting only over 65
-  filter(year == 2019) %>%
+  filter(year == 2020) %>%
   gather(age, pop, -c(year, datazone2011, sex)) %>% # from wide to long format
   mutate(age = as.numeric(gsub("age", "", age))) # remove "age" from age variable values and make numeric
 
 dz11_pop <- dz11_pop %>%
   create_agegroups() %>% #formating age groups and sex
-  mutate(sex = case_when(sex == "M" ~ 1, sex == "F" ~ 2)) %>%
+  mutate(sex = case_when(sex == "m" ~ 1, sex == "f" ~ 2)) %>%
   group_by(year, datazone2011, age_grp, sex) %>%
   summarise(pop =sum(pop, na.rm=T)) %>%  # aggregating by datazone and age/sex groups
   ungroup()
@@ -197,7 +197,7 @@ copd_dep <- data_copd %>%
   create_agegroups() %>% #creating 5 year age band groups
   mutate(sex = as.numeric(sex)) %>%
   select(year, age_grp, sex, pc7) %>%
-  filter(year == 2019) # only data for latest year available
+  filter(year == 2020) # only data for latest year available
 
 # Joining with postcode lookup to bring dz2011 info 
 copd_dep_join <- left_join(copd_dep, postcode_lookup, "pc7") %>% 
