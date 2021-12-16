@@ -67,7 +67,8 @@ output_under75 <- under_75_deaths %>%
   head(10) %>% 
   rename("class1" = cause_of_death,
          "measure" = percentage_of_deaths) %>% 
-  select(class1, measure)
+  select(class1, measure) %>% 
+  arrange(measure) #reorder so that plotly orders y-axis correctly
 
 
 # write csv to data folder# ##CHART 2###
@@ -102,7 +103,8 @@ output_all_ages <- all_ages_deaths %>%
   head(10) %>% 
   rename("class1" = cause_of_death,
          "measure" = percentage_of_deaths) %>% 
-  select(class1, measure)
+  select(class1, measure) %>% 
+  arrange(measure) #reorder so that plotly orders y-axis correctly
 
 # write csv to data folder# ###CHART 1 ####
 write_csv(output_all_ages, paste0(data_folder, "deaths-top10causes-chart1.csv"))
