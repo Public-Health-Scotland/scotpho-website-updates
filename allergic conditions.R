@@ -11,7 +11,7 @@
 source("1.analysis_functions.R")
 
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Allergy/sept2021_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Allergy/sept2022_update/"
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -47,7 +47,7 @@ data_allergy <- tbl_df(dbGetQuery(channel, statement=
               OR substr(main_condition,0,4) = any('K522','L272','T781','T634','T780','T782','T805','T886','T783','T784') 
             THEN 1 else 0 end) allergy
     FROM ANALYSIS.SMR01_PI 
-    WHERE discharge_date between '1 April 2008' and '31 March 2021'
+    WHERE discharge_date between '1 April 2008' and '31 March 2022'
       AND hbtreat_currentdate is not null
       AND substr(hbtreat_currentdate,0,4) != 'S082'
       AND sex in ('1','2')
@@ -60,9 +60,9 @@ setNames(tolower(names(.))) #variables to lower case
 data_allergy <- data_allergy %>%  create_agegroups() 
 
 #Bring populations file#
-scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2020.rds') %>%
+scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2021.rds') %>%
   setNames(tolower(names(.))) %>%  #variables to lower case
-  subset(year >=2008 & year <= 2020) 
+  subset(year >=2008 & year <= 2021) 
 
 # aggregating to scottish total population
 # recode age groups
