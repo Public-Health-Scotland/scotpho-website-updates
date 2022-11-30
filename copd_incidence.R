@@ -7,7 +7,7 @@
 source("1.analysis_functions.R")
 
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/COPD/december2021_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Topics/COPD/december2022_update/"
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -28,7 +28,7 @@ copd_deaths <- tbl_df(dbGetQuery(channel, statement=
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
    FROM ANALYSIS.GRO_DEATHS_C
-   WHERE date_of_registration between '1 January 2002' and '31 December 2020'
+   WHERE date_of_registration between '1 January 2002' and '31 December 2021'
         AND country_of_residence ='XS'
         AND sex <> 9
         AND regexp_like(UNDERLYING_CAUSE_OF_DEATH, '^J4[0-4]')")) %>%
@@ -36,9 +36,9 @@ copd_deaths <- tbl_df(dbGetQuery(channel, statement=
   create_agegroups() # recode age groups for standardisation
 
 # bring populations file 
-scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2020.rds') %>%
+scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2021.rds') %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
-  subset(year > 2001 & year <= 2020) 
+  subset(year > 2001 & year <= 2021) 
 
 # aggregating to scottish total population
 # recode age groups
@@ -56,7 +56,7 @@ copd_deaths_scotland <- copd_deaths %>% group_by(sex, age_grp, cal_year) %>%
 copd_deaths_scotland <- full_join(copd_deaths_scotland, scottish_population, 
                                   c("cal_year" = "year", "age_grp", "sex")) %>% 
   rename(numerator = n, denominator = pop, year = cal_year) %>%  # numerator and denominator used for calculation
-  filter(year<2021) %>% 
+  filter(year<2022) %>% 
   add_epop() # EASR age group pops
 
 # Converting NA's to 0s
@@ -78,7 +78,7 @@ query_sql <- function(table) {
                 THEN extract(year from admission_date)
                 ELSE extract(year from admission_date) -1 END) as year
          FROM ", table,
-         " WHERE admission_date between '1 April 1991' and '31 March 2021' 
+         " WHERE admission_date between '1 April 1991' and '31 March 2022' 
               AND sex in ('1','2')
               AND (substr(main_condition,0,3) = any('J40','J41', 'J42', 'J43', 'J44', '490', '491', '492', '496') 
                 OR substr(main_condition,0,4) = any('-490', '-491', '-492', '-496'))
@@ -91,7 +91,7 @@ data_copd <- rbind(tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR
   setNames(tolower(names(.)))  # variables to lower case
 
 # Bringing datazone info to exclude non-Scottish.
-postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2021_2.rds') %>% 
+postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2022_2.rds') %>% 
   setNames(tolower(names(.))) %>%   #variables to lower case
   select(pc7, datazone2011)
 
@@ -168,20 +168,20 @@ eightyfiveplus_copd_chart <- create_chart_data(dataset = data_eightyfiveplus, ep
 dep_lookup <- readRDS("/PHI_conf/ScotPHO/Profiles/Data/Lookups/Geography/deprivation_geography.rds") %>%
   rename(datazone2011 = datazone) %>%
   select(datazone2011, year, sc_quin) %>%
-  filter(year == 2020)
+  filter(year == 2021)
 
 # population file to get population in each datazone. Chaning format to allow merging
-dz11_pop <- readRDS("/conf/linkage/output/lookups/Unicode/Populations/Estimates/DataZone2011_pop_est_2011_2020.rds") %>%
+dz11_pop <- readRDS("/conf/linkage/output/lookups/Unicode/Populations/Estimates/DataZone2011_pop_est_2011_2021.rds") %>%
   setNames(tolower(names(.))) %>%
   rename(age90 = age90plus) %>%
   select(year, datazone2011, sex, age65:age90) %>% # selecting only over 65
-  filter(year == 2020) %>%
+  filter(year == 2021) %>%
   gather(age, pop, -c(year, datazone2011, sex)) %>% # from wide to long format
   mutate(age = as.numeric(gsub("age", "", age))) # remove "age" from age variable values and make numeric
 
 dz11_pop <- dz11_pop %>%
   create_agegroups() %>% #formating age groups and sex
-  mutate(sex = case_when(sex == "m" ~ 1, sex == "f" ~ 2)) %>%
+  mutate(sex = case_when(sex == "M" ~ 1, sex == "F" ~ 2)) %>%
   group_by(year, datazone2011, age_grp, sex) %>%
   summarise(pop =sum(pop, na.rm=T)) %>%  # aggregating by datazone and age/sex groups
   ungroup()
@@ -197,7 +197,7 @@ copd_dep <- data_copd %>%
   create_agegroups() %>% #creating 5 year age band groups
   mutate(sex = as.numeric(sex)) %>%
   select(year, age_grp, sex, pc7) %>%
-  filter(year == 2020) # only data for latest year available
+  filter(year == 2021) # only data for latest year available
 
 # Joining with postcode lookup to bring dz2011 info 
 copd_dep_join <- left_join(copd_dep, postcode_lookup, "pc7") %>% 
