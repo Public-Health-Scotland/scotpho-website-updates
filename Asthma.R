@@ -12,20 +12,28 @@
 source("1.analysis_functions.R")
 library(glue) # for glue()
 
+# year of update
+year <- 2022
+
+# create new folder(s) to save outputs
+path <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/"
+newfolder <- paste0("December_Update_", year, "/Data/")
+dir.create(file.path(path, newfolder), recursive = TRUE)
+
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Asthma/2021 December Update/Data/"
+data_folder <- paste0(path, newfolder)
 
 # Lookup paths
 path_postcode = paste0('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/',
-                       'Scottish_Postcode_Directory_2021_1.rds')
+                       'Scottish_Postcode_Directory_2022_2.rds')
 path_pop = paste0('/conf/linkage/output/lookups/Unicode/Populations/Estimates/',
-                  'HB2019_pop_est_1981_2020.rds')
+                  'HB2019_pop_est_1981_2021.rds')
 
 # Years of data to include
 year_start_deaths = 2002
-year_end_deaths = 2020
+year_end_deaths = 2021
 year_start_hosp = 2002 # starts 1st April
-year_end_hosp = 2021 # ends 31st March
+year_end_hosp = 2022 # ends 31st March
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
