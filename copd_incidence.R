@@ -252,5 +252,67 @@ copd_dep_chart2 <- copd_dep_chart %>%
 
 write_csv(copd_dep_chart2, paste0(data_folder, "copd_deprivation_chart2.csv"))
 
+###############################################.
+# Part 4 - INCIDENCE by NHS BOARD ----
+###############################################.
+#Using already extracted incidence data and postcode/datazone lookups to identify health board of residence
 
-##END
+#combining SMR01 extract with postcode lookup
+data_copd_HB <- left_join(data_copd, postcode_lookup, "pc7") %>% 
+  subset(!(is.na(datazone2011))) %>%  #select out non-scottish
+  mutate_if(is.character, factor) %>%  # converting variables into factors
+  filter(year == "2022")
+  
+#read in DZ HB lookup
+dz_hb <- read.csv('/conf/linkage/output/lookups/Unicode/Geography/DataZone2011/Datazone2011lookup.csv')
+
+#join by datazone
+data_copd_HB <- left_join(data_copd_HB, dz_hb, "datazone2011") %>%
+  filter(year == "2022") |> 
+  mutate(hb2019name = paste0("NHS ", hb2019name)) |> 
+  select(linkno, cis, doadm, dodis, sex, year, hb2019name)
+
+#Aggregating to obtain numbers for males and females
+admissions_HB_Scotland <- data_copd_HB %>% 
+  distinct(linkno, .keep_all = TRUE) |> #remove repeat admissions
+  group_by(sex, hb2019name) %>% #count how many admissions for each sex and HB
+  count() %>% ungroup() |>  # calculate numerator
+  rename(admissions = n)
+
+scot_pop <- scottish_population |> 
+  filter(year == "2022") |> #exclude historic pop data
+  mutate(sex = as.factor(sex)) |> 
+  group_by(sex, hb2019name) |> #count pop per sex and HB
+  summarise(population = sum(pop)) |> 
+  ungroup()
+
+# Joining data with population (denominator)
+admissions_HB_Scotland <- left_join(admissions_HB_Scotland, scot_pop, 
+                                        c("hb2019name", "sex")) 
+
+admissions_HB_Scotland$rate <- (admissions_HB_Scotland$admissions / admissions_HB_Scotland$population) * 100000
+
+HB_adm <- admissions_HB_Scotland |> 
+  mutate(sex = recode(sex, #recode sex from 1 and 2 to male and female
+                        "1" = "Male",
+                        "2" = "Female"))
+
+#calculate Scotland rate
+Scot_adm <- HB_adm |> 
+  group_by(sex) |> 
+  summarise(admissions = sum(admissions),
+            population = sum(population)) |> 
+  ungroup() |>
+  mutate(rate = admissions/population * 100000,
+         hb2019name = "NHS Scotland")
+
+final_adm <- rbind(Scot_adm, HB_adm)  |> 
+  select(hb2019name, sex, rate) |> 
+  mutate("Health Board" = hb2019name)
+
+
+
+write.csv(final_adm, paste0(data_folder, "copd_admissions_HB.csv"), row.names = FALSE)
+
+#End
+
