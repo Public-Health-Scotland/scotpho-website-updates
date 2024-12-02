@@ -6,7 +6,7 @@
 source("1.analysis_functions.R")
 
 # file path for saved files
-data_folder <- "/PHI_conf/ScotPHO/Website/Topics/Multiple Sclerosis/202212_update/"
+data_folder <- "/PHI_conf/ScotPHO/Website/Charts/Health Conditions/Multiple Sclerosis/2024_update/"
 
 # SMRA login information
 channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
@@ -27,17 +27,17 @@ ms_deaths <- tbl_df(dbGetQuery(channel, statement=
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
       FROM ANALYSIS.GRO_DEATHS_C
-      WHERE date_of_registration between '1 January 2003' and '31 December 2021'
+      WHERE date_of_registration between '1 January 2003' and '31 December 2023'
             AND sex <> 9
       AND (substr(UNDERLYING_CAUSE_OF_DEATH,0,3) = any('G35', '340') 
       or substr(UNDERLYING_CAUSE_OF_DEATH,0,4) = '-340')")) %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
   create_agegroups() # recode age groups for standardisation
 
-# bring populations file 
-scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2021.rds') %>%
+# bring in most recent populations file 
+scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2023.rds') %>%
   setNames(tolower(names(.))) %>%  # variables to lower case
-  subset(year > 2002 & year <= 2021)
+  subset(year > 2002 & year <= 2023)
 
 # aggregating to scottish total population
 # recode age groups
@@ -74,7 +74,7 @@ write_csv(ms_deaths_scotland, paste0(data_folder, filename = "ms_mortality_chart
 # Part 2 - Extract data from SMRA on MS admissions ----
 ###############################################.
 # SQL query extracts data one row per admission with an MS diagnosis, by financial year. 
-# Excluding unvalid sex cases and non-scottish
+# Excluding invalid sex cases and non-scottish
 query_sql <- function(table) {
   paste0("SELECT distinct link_no linkNo, cis_marker CIS, max(age_in_years) age, 
           min(ADMISSION_DATE) doadm, max(discharge_date) dodis, max(sex) sex, min(DR_POSTCODE) pc7,
@@ -82,7 +82,7 @@ query_sql <- function(table) {
                 THEN extract(year from admission_date)
                 ELSE extract(year from admission_date) -1 END) as year
          FROM ", table,
-         " WHERE admission_date between '1 April 1991' and '31 March 2022' 
+         " WHERE admission_date between '1 April 1991' and '31 March 2023' 
          AND sex in ('1','2')
          AND (substr(main_condition,0,3) = any('G35', '340') 
          OR substr(main_condition,0,4) = '-340')
@@ -94,7 +94,7 @@ data_ms <- rbind(tbl_df(dbGetQuery(channel, statement= query_sql("ANALYSIS.SMR01
   setNames(tolower(names(.)))  # variables to lower case
 
 # Bringing datazone info to exclude non-Scottish.
-postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2022_2.rds') %>% 
+postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2024_2.rds') %>% 
   setNames(tolower(names(.))) %>%   #variables to lower case
   select(pc7, datazone2011)
 
