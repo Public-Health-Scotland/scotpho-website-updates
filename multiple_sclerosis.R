@@ -82,7 +82,7 @@ query_sql <- function(table) {
                 THEN extract(year from admission_date)
                 ELSE extract(year from admission_date) -1 END) as year
          FROM ", table,
-         " WHERE admission_date between '1 April 1991' and '31 March 2023' 
+         " WHERE admission_date between '1 April 1991' and '31 March 2024' 
          AND sex in ('1','2')
          AND (substr(main_condition,0,3) = any('G35', '340') 
          OR substr(main_condition,0,4) = '-340')
