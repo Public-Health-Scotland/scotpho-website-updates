@@ -342,8 +342,14 @@ deaths_diab <- tibble::as_tibble(
                      TRUE ~ NA))
    
   #Join all-sex data back on
-  deaths_diab_cleaned <- rbind(deaths_diab_sex, deaths_totals)
+  deaths_diab_cleaned <- rbind(deaths_diab_sex, deaths_totals) |> 
+    rename(Numerator = numerator, 
+           Rate = rate) |> 
+    #Finally pivoting longer so that rates and numerators become one col called measure
+    pivot_longer(cols = c("Numerator", "Rate"), names_to = "measure", values_to = "value") |> 
+    mutate(value =round(value, digits = 1))
+    
   
-  
+  saveRDS(deaths_diab_cleaned, paste0(output, "/deaths_data_shiny_test.rds"))
 
 ##END
