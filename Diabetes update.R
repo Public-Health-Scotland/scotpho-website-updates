@@ -10,7 +10,6 @@
 ###############################################.
 # load packages and functions required to run all commands
 source("1.analysis_functions.R")
-
 library(stringr)
 
 # set files paths. folder will have to be created for newest year's data
@@ -21,7 +20,7 @@ library(stringr)
 ###############################################.
 ## Part 1 - Population files ----
 ###############################################.
-population <- readRDS(paste0(lookups, "CA_pop_allages_SR.rds")) |> 
+population <- readRDS(file.path(lookups, "CA_pop_allages_SR.rds")) |> 
   filter(code == 'S00000001') |>   # Selecting only Scotland level
   add_epop() |>  # Add European Standard Populations for each age group
   # Create required age groups  (<25, 25-44, 45-64, 65+)
@@ -76,8 +75,12 @@ admissions_diab <- admissions_diab_test |>
          diab_main_flag = case_when(str_detect(main_condition, "E1[01234]") ~ "Main Position", TRUE ~ "Any Position")) |>  #identifies whether diabetes was the primary cause of admission
   ungroup() 
 
+#Aggregating by link_no and cis to prevent duplication of stays
+admissions_diab_1.5 <- admissions_diab |> 
+  distinct(link_no, cis_marker, .keep_all = TRUE)
+
 #Aggregating data by age group and other categories created
-admissions_diab_2 <- admissions_diab |> create_agegroups() |>  
+admissions_diab_2 <- admissions_diab_1.5 |> create_agegroups() |>  
   group_by(sex, year, diab_keto, diab_type, diab_main_flag, age_grp) |> #counting number of admissions for each category.
   summarise(numerator = n(), .groups = "drop") |> 
   complete(sex, year, diab_keto, diab_type, diab_main_flag, age_grp, fill = list(numerator = 0)) |>  #filling in blank categories with 0 admissions
