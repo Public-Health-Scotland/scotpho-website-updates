@@ -16,7 +16,7 @@ library(janitor) #for tidying up data
 
 # set files paths. folder will have to be created for newest year's data
 
-  output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/Jun25"
+  output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/Jun26"
   lookups <- "/PHI_conf/ScotPHO/Profiles/Data/Lookups/Population/"
 
 ###############################################.
@@ -60,34 +60,44 @@ FROM (SELECT link_no, cis_marker, MAX(age_in_years) AS age, MAX(sex) AS sex,
     MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E10') THEN 1 ELSE 0 END) AS t1dm_main,
     MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E11') THEN 1 ELSE 0 END) AS t2dm_main,
     MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E1[234]') THEN 1 ELSE 0 END) AS othdm_main,
-    MAX(CASE WHEN REGEXP_LIKE(main_condition || other_condition_1 || other_condition_2 ||
-        other_condition_3 || other_condition_4 || other_condition_5, '^E10'
+    MAX(CASE WHEN (REGEXP_LIKE(main_condition, '^E10') OR REGEXP_LIKE(other_condition_1, '^E10') OR
+    REGEXP_LIKE(other_condition_2, '^E10') OR REGEXP_LIKE(other_condition_3, '^E10') OR
+    REGEXP_LIKE(other_condition_4, '^E10') OR REGEXP_LIKE(other_condition_5, '^E10')
     ) THEN 1 ELSE 0 END) AS t1dm_any,
-  MAX(CASE WHEN REGEXP_LIKE(main_condition || other_condition_1 || other_condition_2 ||
-      other_condition_3 || other_condition_4 || other_condition_5, '^E11'
-  ) THEN 1 ELSE 0 END) AS t2dm_any,
-  MAX(CASE WHEN REGEXP_LIKE(main_condition || other_condition_1 || other_condition_2 ||
-      other_condition_3 || other_condition_4 || other_condition_5, '^E1[234]'
-  ) THEN 1 ELSE 0 END) AS othdm_any,
+    MAX(CASE WHEN (REGEXP_LIKE(main_condition, '^E11') OR REGEXP_LIKE(other_condition_1, '^E11') OR
+    REGEXP_LIKE(other_condition_2, '^E11') OR REGEXP_LIKE(other_condition_3, '^E11') OR
+    REGEXP_LIKE(other_condition_4, '^E11') OR REGEXP_LIKE(other_condition_5, '^E11')
+    ) THEN 1 ELSE 0 END) AS t2dm_any,
+    MAX(CASE WHEN (REGEXP_LIKE(main_condition, '^E1[234]') OR REGEXP_LIKE(other_condition_1, '^E1[234]') OR
+    REGEXP_LIKE(other_condition_2, '^E1[234]') OR REGEXP_LIKE(other_condition_3, '^E1[234]') OR
+    REGEXP_LIKE(other_condition_4, '^E1[234]') OR REGEXP_LIKE(other_condition_5, '^E1[234]')
+    ) THEN 1 ELSE 0 END) AS othdm_any,
    MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E101') THEN 1 ELSE 0 END) AS t1dm_keto_main,
    MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E111') THEN 1 ELSE 0 END) AS t2dm_keto_main,
    MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E1[234]1') THEN 1 ELSE 0 END) AS othdm_keto_main,
-       MAX(CASE WHEN REGEXP_LIKE(main_condition || other_condition_1 || other_condition_2 ||
-        other_condition_3 || other_condition_4 || other_condition_5, 'E101'
-    ) THEN 1 ELSE 0 END) AS t1dm_keto_any,
-  MAX(CASE WHEN REGEXP_LIKE(main_condition || other_condition_1 || other_condition_2 ||
-      other_condition_3 || other_condition_4 || other_condition_5,'E111'
-  ) THEN 1 ELSE 0 END) AS t2dm_keto_any,
-  MAX(CASE WHEN REGEXP_LIKE(main_condition || other_condition_1 || other_condition_2 ||
-      other_condition_3 || other_condition_4 || other_condition_5,'E1[234]1'
-  ) THEN 1 ELSE 0 END) AS othdm_keto_any
+   MAX(CASE WHEN (REGEXP_LIKE(main_condition, 'E101') OR REGEXP_LIKE(other_condition_1, 'E101') OR
+   REGEXP_LIKE(other_condition_2, 'E101') OR REGEXP_LIKE(other_condition_3, 'E101') OR 
+   REGEXP_LIKE(other_condition_4, 'E101') OR REGEXP_LIKE(other_condition_5, 'E101')
+   ) THEN 1 ELSE 0 END) AS t1dm_keto_any,
+   MAX(CASE WHEN (REGEXP_LIKE(main_condition, 'E111') OR REGEXP_LIKE(other_condition_1, 'E111') OR
+   REGEXP_LIKE(other_condition_2, 'E111') OR REGEXP_LIKE(other_condition_3, 'E111') OR 
+   REGEXP_LIKE(other_condition_4, 'E111') OR REGEXP_LIKE(other_condition_5, 'E111')
+   ) THEN 1 ELSE 0 END) AS t2dm_keto_any,
+   MAX(CASE WHEN (REGEXP_LIKE(main_condition, 'E1[234]1') OR REGEXP_LIKE(other_condition_1, 'E1[234]1') OR
+   REGEXP_LIKE(other_condition_2, 'E1[234]1') OR REGEXP_LIKE(other_condition_3, 'E1[234]1') OR 
+   REGEXP_LIKE(other_condition_4, 'E1[234]1') OR REGEXP_LIKE(other_condition_5, 'E1[234]1')
+   ) THEN 1 ELSE 0 END) AS othdm_keto_any
   FROM ANALYSIS.SMR01_PI
   WHERE
   discharge_date BETWEEN '1 April 2011' AND '31 March 2025'
   AND hbtreat_currentdate IS NOT NULL
   AND sex IN ('1','2')
-  AND REGEXP_LIKE(main_condition || other_condition_1 || other_condition_2 ||
-        other_condition_3 || other_condition_4 || other_condition_5,'^E1[01234]')
+    AND (REGEXP_LIKE(main_condition, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_1, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_2, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_3, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_4, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_5, '^E1[01234]'))
     GROUP BY 
   link_no, cis_marker
 ) z
@@ -96,24 +106,24 @@ z.year, z.age, z.sex
 ORDER BY 
 z.year, z.age, z.sex;")) |> 
   clean_names() #names to lower case
-
+    
 #Create columns needed for dropdowns in app
 admissions_diab2 <- admissions_diab |> 
   tidyr::pivot_longer(cols = c(4:15), names_to = "variable", values_to = "count") |> #pivot all the categories into 1 col
-  mutate(diab_type = case_when(variable = str_detect(variable, "1") ~ "Type 1", #assign diabetes types to each category
-                               variable = str_detect(variable, "2") ~ "Type 2",
-                               variable = str_detect(variable, "oth") ~ "Other Diabetes",
+  mutate(diab_type = case_when(str_detect(variable, "1") ~ "Type 1", #assign diabetes types to each category
+                               str_detect(variable, "2") ~ "Type 2",
+                               str_detect(variable, "oth") ~ "Other Diabetes",
                                TRUE ~ NA_character_),
-         diab_main = case_when(variable = str_detect(variable, "m_main") ~ "Main Position", #assign diabetes positions / keto diagnosis
-                               variable = str_detect(variable, "m_any") ~ "Any Position",
-                               variable = str_detect(variable, "keto") ~ "Diabetic Ketoacidosis",
-                               TRUE ~ NA_character_)) 
+         diab_main = case_when(str_detect(variable, "keto") ~ "Diabetic Ketoacidosis", #assign diagnosis position. Treating ketoacidosis like a position as it can also occur in t1 or t2
+                               str_detect(variable, "m_main") ~ "Main Position",
+                               str_detect(variable, "m_any") ~ "Any Position",
+                               TRUE ~ NA_character_))
 
 #Aggregate age groups
 admissions_diab3 <- admissions_diab2 |> 
   create_agegroups() |>  #create age groups
   group_by(sex, year, diab_type, diab_main, age_grp) |> 
-  summarise(numerator = n(), .groups = "drop") |> 
+  summarise(numerator = sum(count), .groups = "drop") |> 
   mutate(age_grp2 = case_when(between(age_grp, 1, 5) ~ "<25",
                                 between(age_grp, 6, 9) ~ "25-44",
                                 between(age_grp, 10, 13) ~ "45-64",
