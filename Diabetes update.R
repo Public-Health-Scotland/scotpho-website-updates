@@ -49,8 +49,7 @@ admissions_diab <- tibble::as_tibble(dbGetQuery(channel, statement =
 "SELECT z.year, z.age, z.sex, 
 SUM(z.t1dm_main) AS t1dm_main, SUM(z.t2dm_main) AS t2dm_main, SUM(z.othdm_main) AS othdm_main,
 SUM(z.t1dm_any) AS t1dm_any, SUM(z.t2dm_any) AS t2dm_any, SUM(z.othdm_any) AS othdm_any,
-SUM(z.t1dm_keto_main) AS t1dm_keto_main, SUM(z.t2dm_keto_main) AS t2dm_keto_main, SUM(z.othdm_keto_main) AS othdm_keto_main,
-SUM(z.t1dm_keto_any) AS t1dm_keto_any, SUM(z.t2dm_keto_any) AS t2dm_keto_any, SUM(z.othdm_keto_any) AS othdm_keto_any
+SUM(z.t1dm_keto_main) AS t1dm_keto_main, SUM(z.t2dm_keto_main) AS t2dm_keto_main, SUM(z.othdm_keto_main) AS othdm_keto_main
 FROM (SELECT link_no, cis_marker, MAX(age_in_years) AS age, MAX(sex) AS sex, 
     MAX(CASE WHEN EXTRACT(MONTH FROM discharge_date) > 3 
       THEN EXTRACT(YEAR FROM discharge_date)
@@ -74,19 +73,7 @@ FROM (SELECT link_no, cis_marker, MAX(age_in_years) AS age, MAX(sex) AS sex,
     ) THEN 1 ELSE 0 END) AS othdm_any,
    MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E101') THEN 1 ELSE 0 END) AS t1dm_keto_main,
    MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E111') THEN 1 ELSE 0 END) AS t2dm_keto_main,
-   MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E1[234]1') THEN 1 ELSE 0 END) AS othdm_keto_main,
-   MAX(CASE WHEN (REGEXP_LIKE(main_condition, 'E101') OR REGEXP_LIKE(other_condition_1, 'E101') OR
-   REGEXP_LIKE(other_condition_2, 'E101') OR REGEXP_LIKE(other_condition_3, 'E101') OR 
-   REGEXP_LIKE(other_condition_4, 'E101') OR REGEXP_LIKE(other_condition_5, 'E101')
-   ) THEN 1 ELSE 0 END) AS t1dm_keto_any,
-   MAX(CASE WHEN (REGEXP_LIKE(main_condition, 'E111') OR REGEXP_LIKE(other_condition_1, 'E111') OR
-   REGEXP_LIKE(other_condition_2, 'E111') OR REGEXP_LIKE(other_condition_3, 'E111') OR 
-   REGEXP_LIKE(other_condition_4, 'E111') OR REGEXP_LIKE(other_condition_5, 'E111')
-   ) THEN 1 ELSE 0 END) AS t2dm_keto_any,
-   MAX(CASE WHEN (REGEXP_LIKE(main_condition, 'E1[234]1') OR REGEXP_LIKE(other_condition_1, 'E1[234]1') OR
-   REGEXP_LIKE(other_condition_2, 'E1[234]1') OR REGEXP_LIKE(other_condition_3, 'E1[234]1') OR 
-   REGEXP_LIKE(other_condition_4, 'E1[234]1') OR REGEXP_LIKE(other_condition_5, 'E1[234]1')
-   ) THEN 1 ELSE 0 END) AS othdm_keto_any
+   MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E1[234]1') THEN 1 ELSE 0 END) AS othdm_keto_main
   FROM ANALYSIS.SMR01_PI
   WHERE
   discharge_date BETWEEN '1 April 2011' AND '31 March 2025'
@@ -109,7 +96,7 @@ z.year, z.age, z.sex;")) |>
     
 #Create columns needed for dropdowns in app
 admissions_diab2 <- admissions_diab |> 
-  tidyr::pivot_longer(cols = c(4:15), names_to = "variable", values_to = "count") |> #pivot all the categories into 1 col
+  tidyr::pivot_longer(cols = c(4:12), names_to = "variable", values_to = "count") |> #pivot all the categories into 1 col
   mutate(diab_type = case_when(str_detect(variable, "1") ~ "Type 1", #assign diabetes types to each category
                                str_detect(variable, "2") ~ "Type 2",
                                str_detect(variable, "oth") ~ "Other Diabetes",
