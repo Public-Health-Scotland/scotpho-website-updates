@@ -121,36 +121,67 @@ admissions_diab4 <- left_join(admissions_diab3, population,
                              by = c("year", "sex", "age_grp", "age_grp2")) |>  
   add_epop() #adding European population for rate calculation 
 
-#Aggregate figures for males and females to get all sexes
-all_sexes <- admissions_diab4 |> #combining the data for males and females to get a count for both sexes combined
-  mutate(sex = "All") |> 
-  create_rates(cats = c("diab_type", "diab_main", "age_grp2"), epop_total = 200000, sex = F) |> #Then calculating rates
-  mutate(sex = "All")
 
-#Create rates for males and females separately
-admissions_diab_sex <- admissions_diab4 |> 
-  create_rates(cats = c("diab_type", "diab_main", "sex", "age_grp2"), epop_total = 100000, sex = T) 
-
-#Calculate rates for all ages
-all_ages <- admissions_diab4 |> 
-  create_rates(cats = c("diab_type", "diab_main", "sex"), epop_total = 100000, sex = T) |>  #Then calculating rates
-  mutate(age_grp2 = "All ages")
-
-#Calculate rates for all sexes combined and all age groups combined
-all_ages_sexes <- admissions_diab4 |>
-  create_rates(cats = c("diab_type", "diab_main"), epop_total = 200000, sex = F) |> 
-  mutate(sex = "All", age_grp2 = "All ages")
-
-admissions_diab <- rbind(all_sexes, admissions_diab_sex, all_ages, all_ages_sexes)
+#Calculating rates for each age group and sex 
+admissions_diab5 <- rbind(
+    # For <25 group
+     admissions_diab4 |> #males and females
+      filter(age_grp2 == "<25") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 27500, sex = TRUE),
+     
+     y<- admissions_diab4 |> #all sexes
+       filter(age_grp2 == "<25") |>
+       create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 55000, sex = FALSE) |> 
+       mutate(sex = "All"),
+    
+    # For 25-44 group
+    admissions_diab4 |> 
+      filter(age_grp2 == "25-44") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 26500, sex = TRUE),
+    
+    admissions_diab4 |> 
+      filter(age_grp2 == "25-44") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 53000, sex = FALSE) |> 
+      mutate(sex = "All"),
+    
+    # For 45-64 group
+    admissions_diab4 |>
+      filter(age_grp2 == "45-64") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 26500, sex = TRUE),
+    
+    admissions_diab4 |>
+      filter(age_grp2 == "45-64") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 53000, sex = FALSE) |> 
+      mutate(sex = "All"),
+    
+    # For 65+ group
+    admissions_diab4 |>
+      filter(age_grp2 == "65+") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 19500, sex = TRUE),
+    
+    admissions_diab4 |>
+      filter(age_grp2 == "65+") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 39000, sex = FALSE) |> 
+      mutate(sex = "All"),
+    
+    # All ages by sex
+    admissions_diab4 |>
+      create_rates(cats = c("diab_type", "diab_main"), epop_total = 100000, sex = TRUE) |> 
+      mutate(age_grp2 = "All ages"),
+    
+    admissions_diab4 |>
+      create_rates(cats = c("diab_type", "diab_main"), epop_total = 200000, sex = FALSE) |> 
+      mutate(age_grp2 = "All ages",
+             sex = "All"))
 
 #Convert numeric sex to character
-admissions_diab <- admissions_diab |> 
+admissions_diab5 <- admissions_diab5 |> 
   mutate(sex = case_when(sex == 1 ~ "Male",
                          sex == 2 ~ "Female",
                          TRUE ~ "All"))
 
 #Pivot longer to have a "measure" col
-admissions_diab_final <- admissions_diab |> 
+admissions_diab_final <- admissions_diab5 |> 
   tidyr::pivot_longer(cols = c(numerator, rate), names_to = "measure", values_to = "value") |> 
   mutate(measure = str_to_title(measure),
          value = round(value, digits = 1))
