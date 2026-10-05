@@ -19,7 +19,7 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
 ###############################################.
 # SQL query for copd deaths: Scottish residents with a main cause of death of copd
 # extracting by date of registration and getting calendar and financial year
-# excluding unvalid sex cases as this is required by standardisation
+# excluding invalid sex cases as this is required by standardisation
 copd_deaths <- as_tibble(dbGetQuery(channel, statement=
   "SELECT LINK_NO linkno, YEAR_OF_REGISTRATION cal_year, 
         UNDERLYING_CAUSE_OF_DEATH cod, AGE, SEX, DATE_OF_registration doadm,
@@ -28,7 +28,7 @@ copd_deaths <- as_tibble(dbGetQuery(channel, statement=
             THEN extract(year from date_of_registration)
             ELSE extract(year from date_of_registration) -1 END as year
    FROM ANALYSIS.GRO_DEATHS_C
-   WHERE date_of_registration between '1 January 2002' and '31 December 2024'
+   WHERE date_of_registration between '1 January 2002' and '31 December 2025'
         AND country_of_residence ='XS'
         AND sex <> 9
         AND regexp_like(UNDERLYING_CAUSE_OF_DEATH, '^J4[0-4]')")) |> 
@@ -36,7 +36,7 @@ copd_deaths <- as_tibble(dbGetQuery(channel, statement=
   create_agegroups() # recode age groups for standardisation
 
 # bring populations file 
-scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2024.rds') %>%
+scottish_population <- readRDS('/conf/linkage/output/lookups/Unicode/Populations/Estimates/HB2019_pop_est_1981_2025.rds') %>%
   janitor::clean_names() |>   # variables to lower case
   subset(year > 2001) 
  
@@ -65,6 +65,13 @@ copd_deaths_scotland <- copd_deaths_scotland |>
 copd_deaths_chart <- create_chart_data(dataset = copd_deaths_scotland, epop_total = 100000, 
                                        filename = "copd_deaths_scotland", year_type = "calendar")
 
+#Appending historic data from 1996 - 2001 that's not available thru SMR
+historic <- read.csv(file.path(data_folder, "copd_deaths_96-01_historic.csv"))
+
+copd_deaths_chart <- rbind(historic, copd_deaths_chart) |> 
+  mutate(rate = round(rate, digits = 1))
+write.csv(copd_deaths_chart, file.path(data_folder, "copd_deaths_scotland.csv"), row.names = F)
+
 ###############################################.
 # Part 2 - Extract data from SMRA on COPD admissions ----
 ###############################################.
@@ -77,7 +84,7 @@ query_sql <- function(table) {
                 THEN extract(year from admission_date)
                 ELSE extract(year from admission_date) -1 END) as year
          FROM ", table,
-         " WHERE admission_date between '1 April 1991' and '31 March 2025' 
+         " WHERE admission_date between '1 April 1991' and '31 March 2026' 
               AND sex in ('1','2')
               AND (substr(main_condition,0,3) = any('J40','J41', 'J42', 'J43', 'J44', '490', '491', '492', '496') 
                 OR substr(main_condition,0,4) = any('-490', '-491', '-492', '-496'))
@@ -90,7 +97,7 @@ data_copd <- rbind(as_tibble(dbGetQuery(channel, statement= query_sql("ANALYSIS.
   janitor::clean_names() # variables to lower case
 
 # Bringing datazone info to exclude non-Scottish.
-postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2025_1.rds') |>  
+postcode_lookup <- readRDS('/conf/linkage/output/lookups/Unicode/Geography/Scottish Postcode Directory/Scottish_Postcode_Directory_2026_2.rds') |>  
   janitor::clean_names() |>    #variables to lower case
   select(pc7, datazone2011)
 
@@ -141,7 +148,6 @@ data_agegroups <- deaths_admissions_scotland |>
   summarise(across(where(is.numeric), ~sum(.x, na.rm = TRUE))) |>
   rename(age_grp = age_grp2) |>
   ungroup()
-
 
 # Creating datasets for each age group as calculations need to be per age group (different total EPOPs)
 data_undersixtyfive <- data_agegroups |>  filter(age_grp == 1) # under 65
