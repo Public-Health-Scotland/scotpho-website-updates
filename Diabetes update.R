@@ -10,31 +10,29 @@
 ###############################################.
 # load packages and functions required to run all commands
 source("1.analysis_functions.R")
+library(stringr) #for manipulating strings
+library(purrr) #for handling lists
+library(janitor) #for tidying up data
 
-# change automatically depending if you are using R server or R desktop
-if (sessionInfo()$platform %in% c("x86_64-redhat-linux-gnu (64-bit)", "x86_64-pc-linux-gnu (64-bit)")) {
-  output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/December_2022_updates/"
+# set files paths. folder will have to be created for newest year's data
+
+  output <- "/PHI_conf/ScotPHO/Website/Topics/Diabetes/Data/Jun26"
   lookups <- "/PHI_conf/ScotPHO/Profiles/Data/Lookups/Population/"
-  
-} else {
-  output <- "//stats/ScotPHO/Website/Topics/Diabetes/Data/December_2022_updates/"
-  lookups <- "//stats/ScotPHO/Profiles/Data/Lookups/Population/"
-}
 
 ###############################################.
 ## Part 1 - Population files ----
 ###############################################.
-population <- readRDS(paste0(lookups, "CA_pop_allages_SR.rds")) %>% 
-  filter(code == 'S00000001') %>%  # Selecting only Scotland level
-  add_epop() %>% # Add European Standard Populations for each age group
+population <- readRDS(file.path(lookups, "CA_pop_allages_SR.rds")) |> 
+  filter(code == 'S00000001') |>   # Selecting only Scotland level
+  add_epop() |>  # Add European Standard Populations for each age group
   # Create required age groups  (<25, 25-44, 45-64, 65+)
   mutate(age_grp2 = case_when(between(age_grp, 1, 5) ~ "<25",
                           between(age_grp, 6, 9) ~ "25-44",
                           between(age_grp, 10, 13) ~ "45-64",
                           between(age_grp, 14, 19) ~ "65+"),
-  sex = as.character(sex_grp)) %>% 
-  group_by(year, sex, age_grp, age_grp2) %>% #aggregating
-  summarize_at(c("denominator", "epop"), sum, na.rm = TRUE) %>% ungroup()
+  sex = as.character(sex_grp)) |> #convert sex to character from numeric
+  group_by(year, sex, age_grp, age_grp2) |> #aggregating on age groups
+  summarise_at(c("denominator", "epop"), sum, na.rm = TRUE) |>  ungroup()
 
 ###############################################.
 ## Part 2 - Hospital admissions data ----
@@ -44,166 +42,223 @@ channel <- suppressWarnings(dbConnect(odbc(),  dsn="SMRA",
                                       uid=.rs.askForPassword("SMRA Username:"), 
                                       pwd=.rs.askForPassword("SMRA Password:")))
 
-# This query extracts data for all episodes of patients for which in any ocassion there was a diagnosis of diabetes.
-# It exclude patients with no sex recorded (8 cases) and non-scottish patients.
-# It does creates variables to see if diabetes is in the diagnosis of the episode, if it is the main cause 
-# and if there is a diagnosis of ketoacidosis. It should take ~ 5 mins to run.
-# Create one record per CIS selecting the admission date and personal/geographical details from 
-# the first episode of the CIS, the latest discharge date of the CIS, ensuring all required diagnoses are captured.
-admissions_diab <- tbl_df(dbGetQuery(channel, statement=
- "SELECT sum(z.diab_main) diab_main, sum(z.diab_keto) diab_keto, sum(z.diabetes) diabetes,
-    z.year, z.age, z.sex
-  FROM (SELECT distinct link_no | | cis_marker CIS, max(age_in_years) age, max(sex) sex, 
-      max(CASE WHEN extract(month from discharge_date) > 3 THEN extract(year from discharge_date) 
-            ELSE extract(year from discharge_date) -1 END) as year, 
-      max(CASE WHEN regexp_like(main_condition, 'E1[01234]') then 1 else 0 end) diab_main, 
-      max(CASE WHEN regexp_like(main_condition, 'E101|E111|E121|E131|E141') then 1 else 0 end) diab_keto, 
-      max(CASE WHEN regexp_like(main_condition || other_condition_1 || other_condition_2
-            || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]')
-            THEN 1 ELSE 0 END) diabetes 
-    FROM ANALYSIS.SMR01_PI 
-    WHERE discharge_date between '1 April 2011' and '31 March 2022'
-      and hbtreat_currentdate is not null 
-      and sex in ('1','2') 
-      and regexp_like(main_condition || other_condition_1 || other_condition_2
-            || other_condition_3 || other_condition_4 || other_condition_5, 'E1[01234]') 
-    GROUP BY link_no | | cis_marker) z  
- GROUP BY z.year, z.age, z.sex")) %>% 
-  setNames(tolower(names(.)))  #variables to lower case
+# This query extracts data for all episodes of patients for which in any occasion there was a diagnosis of diabetes.
+# It excludes patients with no sex recorded and patients who were not Scottish residents
 
-#Age groups and aggregating by sex, year and age group
-admissions_diab <- admissions_diab %>% create_agegroups() %>% 
+admissions_diab <- tibble::as_tibble(dbGetQuery(channel, statement = 
+"SELECT z.year, z.age, z.sex, 
+SUM(z.t1dm_main) AS t1dm_main, SUM(z.t2dm_main) AS t2dm_main, SUM(z.othdm_main) AS othdm_main,
+SUM(z.t1dm_any) AS t1dm_any, SUM(z.t2dm_any) AS t2dm_any, SUM(z.othdm_any) AS othdm_any,
+SUM(z.t1dm_keto_main) AS t1dm_keto_main, SUM(z.t2dm_keto_main) AS t2dm_keto_main, SUM(z.othdm_keto_main) AS othdm_keto_main
+FROM (SELECT link_no, cis_marker, MAX(age_in_years) AS age, MAX(sex) AS sex, 
+    MAX(CASE WHEN EXTRACT(MONTH FROM discharge_date) > 3 
+      THEN EXTRACT(YEAR FROM discharge_date)
+      ELSE EXTRACT(YEAR FROM discharge_date) - 1 
+      END
+    ) AS year,
+    MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E10') THEN 1 ELSE 0 END) AS t1dm_main,
+    MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E11') THEN 1 ELSE 0 END) AS t2dm_main,
+    MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E1[234]') THEN 1 ELSE 0 END) AS othdm_main,
+    MAX(CASE WHEN (REGEXP_LIKE(main_condition, '^E10') OR REGEXP_LIKE(other_condition_1, '^E10') OR
+    REGEXP_LIKE(other_condition_2, '^E10') OR REGEXP_LIKE(other_condition_3, '^E10') OR
+    REGEXP_LIKE(other_condition_4, '^E10') OR REGEXP_LIKE(other_condition_5, '^E10')
+    ) THEN 1 ELSE 0 END) AS t1dm_any,
+    MAX(CASE WHEN (REGEXP_LIKE(main_condition, '^E11') OR REGEXP_LIKE(other_condition_1, '^E11') OR
+    REGEXP_LIKE(other_condition_2, '^E11') OR REGEXP_LIKE(other_condition_3, '^E11') OR
+    REGEXP_LIKE(other_condition_4, '^E11') OR REGEXP_LIKE(other_condition_5, '^E11')
+    ) THEN 1 ELSE 0 END) AS t2dm_any,
+    MAX(CASE WHEN (REGEXP_LIKE(main_condition, '^E1[234]') OR REGEXP_LIKE(other_condition_1, '^E1[234]') OR
+    REGEXP_LIKE(other_condition_2, '^E1[234]') OR REGEXP_LIKE(other_condition_3, '^E1[234]') OR
+    REGEXP_LIKE(other_condition_4, '^E1[234]') OR REGEXP_LIKE(other_condition_5, '^E1[234]')
+    ) THEN 1 ELSE 0 END) AS othdm_any,
+   MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E101') THEN 1 ELSE 0 END) AS t1dm_keto_main,
+   MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E111') THEN 1 ELSE 0 END) AS t2dm_keto_main,
+   MAX(CASE WHEN REGEXP_LIKE(main_condition, '^E1[234]1') THEN 1 ELSE 0 END) AS othdm_keto_main
+  FROM ANALYSIS.SMR01_PI
+  WHERE
+  discharge_date BETWEEN '1 April 2011' AND '31 March 2025'
+  AND hbtreat_currentdate IS NOT NULL
+  AND sex IN ('1','2')
+    AND (REGEXP_LIKE(main_condition, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_1, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_2, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_3, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_4, '^E1[01234]') OR
+    REGEXP_LIKE(other_condition_5, '^E1[01234]'))
+    GROUP BY 
+  link_no, cis_marker
+) z
+  GROUP BY 
+z.year, z.age, z.sex
+ORDER BY 
+z.year, z.age, z.sex;")) |> 
+  clean_names() #names to lower case
+    
+#Create columns needed for dropdowns in app
+admissions_diab2 <- admissions_diab |> 
+  tidyr::pivot_longer(cols = c(4:12), names_to = "variable", values_to = "count") |> #pivot all the categories into 1 col
+  mutate(diab_type = case_when(str_detect(variable, "1") ~ "Type 1", #assign diabetes types to each category
+                               str_detect(variable, "2") ~ "Type 2",
+                               str_detect(variable, "oth") ~ "Other Diabetes",
+                               TRUE ~ NA_character_),
+         diab_main = case_when(str_detect(variable, "keto") ~ "Diabetic Ketoacidosis", #assign diagnosis position. Treating ketoacidosis like a position as it can also occur in t1 or t2
+                               str_detect(variable, "m_main") ~ "Main Position",
+                               str_detect(variable, "m_any") ~ "Any Position",
+                               TRUE ~ NA_character_))
+
+#Aggregate age groups
+admissions_diab3 <- admissions_diab2 |> 
+  create_agegroups() |>  #create age groups
+  group_by(sex, year, diab_type, diab_main, age_grp) |> 
+  summarise(numerator = sum(count), .groups = "drop") |> 
   mutate(age_grp2 = case_when(between(age_grp, 1, 5) ~ "<25",
-                              between(age_grp, 6, 9) ~ "25-44",
-                              between(age_grp, 10, 13) ~ "45-64",
-                              between(age_grp, 14, 19) ~ "65+")) %>% 
-  group_by(year, sex, age_grp, age_grp2) %>% 
-  summarize_at(c("diabetes", "diab_main", "diab_keto"), sum, na.rm = T) %>% 
-  #From wide to long format
-  gather(type, numerator, -c(year, sex, age_grp, age_grp2)) %>% ungroup()
+                                between(age_grp, 6, 9) ~ "25-44",
+                                between(age_grp, 10, 13) ~ "45-64",
+                                between(age_grp, 14, 19) ~ "65+")) 
 
 #Bringing population information to calculate rates.
-admissions_diab <- left_join(admissions_diab, population, 
-                             by = c("year", "sex", "age_grp", "age_grp2")) %>% 
-  add_epop() #adding European population for rate calculation
+admissions_diab4 <- left_join(admissions_diab3, population, 
+                             by = c("year", "sex", "age_grp", "age_grp2")) |>  
+  add_epop() #adding European population for rate calculation 
 
-saveRDS(admissions_diab, paste0(output, "diabetes_admissions_basefile.rds"))
-admissions_diab <- readRDS(paste0(output, "diabetes_admissions_basefile.rds")) 
 
-###############################################.
-# Creating file for Secondary care section chart 1.
-#Creating totals for both sexes 
-seccare_c1_total <- admissions_diab %>%  group_by(year, age_grp, age_grp2, type) %>% 
-  summarise_at(c("numerator", "denominator", "epop"), sum, na.rm = T) %>% ungroup() %>% 
-  mutate(sex = "All")
+#Calculating rates for each age group and sex 
+admissions_diab5 <- rbind(
+    # For <25 group
+     admissions_diab4 |> #males and females
+      filter(age_grp2 == "<25") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 27500, sex = TRUE),
+     
+     y<- admissions_diab4 |> #all sexes
+       filter(age_grp2 == "<25") |>
+       create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 55000, sex = FALSE) |> 
+       mutate(sex = "All"),
+    
+    # For 25-44 group
+    admissions_diab4 |> 
+      filter(age_grp2 == "25-44") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 26500, sex = TRUE),
+    
+    admissions_diab4 |> 
+      filter(age_grp2 == "25-44") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 53000, sex = FALSE) |> 
+      mutate(sex = "All"),
+    
+    # For 45-64 group
+    admissions_diab4 |>
+      filter(age_grp2 == "45-64") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 26500, sex = TRUE),
+    
+    admissions_diab4 |>
+      filter(age_grp2 == "45-64") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 53000, sex = FALSE) |> 
+      mutate(sex = "All"),
+    
+    # For 65+ group
+    admissions_diab4 |>
+      filter(age_grp2 == "65+") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 19500, sex = TRUE),
+    
+    admissions_diab4 |>
+      filter(age_grp2 == "65+") |>
+      create_rates(cats =c("diab_type", "diab_main", "age_grp2"), epop_total = 39000, sex = FALSE) |> 
+      mutate(sex = "All"),
+    
+    # All ages by sex
+    admissions_diab4 |>
+      create_rates(cats = c("diab_type", "diab_main"), epop_total = 100000, sex = TRUE) |> 
+      mutate(age_grp2 = "All ages"),
+    
+    admissions_diab4 |>
+      create_rates(cats = c("diab_type", "diab_main"), epop_total = 200000, sex = FALSE) |> 
+      mutate(age_grp2 = "All ages",
+             sex = "All"))
 
-# Calculating rates for all and for each sex
-seccare_c1_total <- seccare_c1_total %>% create_rates(cats = "type", epop_total = 200000, sex = T)
+#Convert numeric sex to character
+admissions_diab5 <- admissions_diab5 |> 
+  mutate(sex = case_when(sex == 1 ~ "Male",
+                         sex == 2 ~ "Female",
+                         TRUE ~ "All"))
 
-seccare_c1_sex <- admissions_diab %>% create_rates(cats = "type", epop_total = 100000, sex = T)
+#Pivot longer to have a "measure" col
+admissions_diab_final <- admissions_diab5 |> 
+  tidyr::pivot_longer(cols = c(numerator, rate), names_to = "measure", values_to = "value") |> 
+  mutate(measure = str_to_title(measure),
+         value = round(value, digits = 1))
 
-# Preparing file for chart
-seccare_c1 <- rbind(seccare_c1_total, seccare_c1_sex) %>% 
-  filter(type != "diab_keto") %>% #ketoacidosis is shown in the second chart
-  #Creating labels for chart
-  mutate(class1 = case_when(type == 'diab_main' & sex == 'All' ~ 'All - main diagnosis',
-      type == 'diab_main' & sex == '2' ~ 'Female - main diagnosis',
-      type == 'diab_main' & sex == '1' ~ 'Male - main diagnosis',
-      type == 'diabetes' & sex == 'All' ~ 'All - any diagnosis',
-      type == 'diabetes' & sex == '2' ~ 'Female - any diagnosis',
-      type == 'diabetes' & sex == '1' ~ 'Male - any diagnosis')) %>% 
-  make_year_labels(year_type = "financial") %>%  # Relabeling years
-  rename(class2 = year) %>% select(class2, class1, numerator, rate)
-
-write_csv(seccare_c1, paste0(output, "diabetes_secondarycare_chart1.csv"))
-
-###############################################.
-# Creating file for Secondary care section chart 2.
-seccare_c2 <- rbind( #calculating rates for each age group
-  # For under 25 group group
-  admissions_diab %>% filter(age_grp2 == "<25" & type == "diab_keto") %>% 
-    create_rates(cats = "age_grp2", epop_total = 27500, sex = T),
-  # For 25 to 44 group
-  admissions_diab %>% filter(age_grp2 == "25-44" & type == "diab_keto") %>% 
-    create_rates(cats = "age_grp2", epop_total = 26500, sex = T),
-  # For 45 to 64 group
-  admissions_diab %>% filter(age_grp2 == "45-64" & type == "diab_keto") %>% 
-    create_rates(cats = "age_grp2", epop_total = 26500, sex = T),
-  # For over 65 group
-  admissions_diab %>% filter(age_grp2 == "65+" & type == "diab_keto") %>% 
-    create_rates(cats = "age_grp2", epop_total = 19500, sex = T),
-  # all ages by sex 
-  seccare_c1_sex %>% filter(type == "diab_keto") %>% select(-type) %>% 
-    mutate(age_grp2 =  "All")) 
-
-seccare_c2 <- seccare_c2 %>% 
-  #Creating labels for chart
-  mutate(class1 = case_when(age_grp2 == 'All' & sex == '2' ~ 'Female - all ages',
-                            age_grp2 == '<25' & sex == '2' ~ 'Female - 0-24',
-                            age_grp2 == '25-44' & sex == '2' ~ 'Female - 25-44',
-                            age_grp2 == '45-64' & sex == '2' ~ 'Female - 45-64',
-                            age_grp2 == '65+' & sex == '2' ~ 'Female - 65+',
-                            age_grp2 == 'All' & sex == '1' ~ 'Male - all ages',
-                            age_grp2 == '<25' & sex == '1' ~ 'Male - 0-24',
-                            age_grp2 == '25-44' & sex == '1' ~ 'Male - 25-44',
-                            age_grp2 == '45-64' & sex == '1' ~ 'Male - 45-64',
-                            age_grp2 == '65+' & sex == '1' ~ 'Male - 65+')) %>% 
-  make_year_labels(year_type = "financial") %>%  # Relabeling years
-  rename(class2 = year) %>% select(class2, class1, numerator, rate)
-
-write_csv(seccare_c2, paste0(output, "diabetes_secondarycare_chart2.csv"))
+saveRDS(admissions_diab_final, file.path(output, "/diabetes_admissions_basefile.rds"))
+write.csv(admissions_diab_final, file.path(output, "/diabetes_admissions.csv"), row.names = F)
 
 ###############################################.
 ## Part 3 - Deaths data ----
 ###############################################.
-# Scottish resident deaths due to diabetes (any position) and valid sex recorded. 
-# Creating variable with ones where it was the main cause. 
-deaths_diab <- tbl_df(
-  dbGetQuery(channel, statement=
-  "SELECT year_of_registration year, sex, age, count(*) all_diag,  
-    sum(case when regexp_like(UNDERLYING_CAUSE_OF_DEATH, 'E1[01234]') then 1 else 0 end) main_diag 
-  FROM ANALYSIS.GRO_DEATHS_C 
-  WHERE year_of_registration between 2011 and 2021 
-    and country_of_residence= 'XS' 
-    and sex <> 9 
-    and regexp_like(UNDERLYING_CAUSE_OF_DEATH || cause_of_death_code_0 ||
-      cause_of_death_code_1 ||  cause_of_death_code_2 ||  cause_of_death_code_3 || 
-      cause_of_death_code_4 ||  cause_of_death_code_5 ||  cause_of_death_code_6 || 
-      cause_of_death_code_7 ||  cause_of_death_code_8 ||  cause_of_death_code_9,
-      'E1[01234]') 
-  GROUP BY year_of_registration, sex, age ")) %>%
-  setNames(tolower(names(.)))  #variables to lower case
+deaths_diab <- tibble::as_tibble(
+  dbGetQuery(channel, statement = 
+            "SELECT year_of_registration, sex, age, underlying_cause_of_death,
+            cause_of_death_code_0, cause_of_death_code_1, cause_of_death_code_2,
+            cause_of_death_code_3, cause_of_death_code_4, cause_of_death_code_5,
+            cause_of_death_code_6, cause_of_death_code_7, cause_of_death_code_8,
+            cause_of_death_code_9
+            FROM ANALYSIS.GRO_Deaths_C
+            WHERE(
+            year_of_registration between 2011 and 2024
+            and country_of_residence = 'XS'
+            and sex in ('1', '2')
+            and regexp_like(underlying_cause_of_death || 
+            cause_of_death_code_0 || cause_of_death_code_1 || cause_of_death_code_2 ||
+            cause_of_death_code_3 || cause_of_death_code_4 || cause_of_death_code_5 ||
+            cause_of_death_code_6 || cause_of_death_code_7 || cause_of_death_code_8 ||
+            cause_of_death_code_9, 'E1[01234]'))")) |> 
+  janitor::clean_names()
+                                              
+  deaths_diab <- deaths_diab |> 
+    mutate(death_type = case_when(stringr::str_detect(underlying_cause_of_death, "^E1[01234]") ~ "Underlying",
+                                   TRUE ~ "Contributory")) |> #identifying whether the relevant diabetes codes were the primary cause of death or supplemental causes
+    mutate(id_col = row_number()) #adding this to ensure no overcounting when pivoting wider again
+    
+  deaths_diab_long <- deaths_diab |> #pivoting longer as it's more efficient for assigning diabetes type
+    tidyr::pivot_longer(cols = c(4:14), names_to = "cause_code_position", values_to = "cause_code") |> 
+    mutate(diab_type = case_when(str_detect(cause_code, "^E10") ~ "Type 1", #assigning relevant diabetes types
+                                 str_detect(cause_code, "^E11") ~ "Type 2",
+                                 str_detect(cause_code, "^E1[2-4]") ~ "Other Diabetes",
+                                            TRUE ~ NA_character_)) |> #if cause of death is non-diabetes, produce NA
+    group_by(id_col) |> #this prevents duplication of rows where the death had diabetes-related causes in multiple positions
+    summarise(death_type = first(death_type), 
+              diab_type = first(na.omit(diab_type)), .groups = "drop") 
   
-# Creating age_groups and aggregating by them.
-deaths_diab <- deaths_diab %>% create_agegroups() %>% group_by(year, sex, age_grp) %>% 
-  summarize_at(c("all_diag", "main_diag"), sum, na.rm = T) %>%
-  gather(type, numerator, -c(year, sex, age_grp)) %>%  #From wide to long format
-  ungroup()
-
-#Bringing population information to calculate rates.
-deaths_diab <- left_join(deaths_diab, population, 
-                        by = c("year", "sex", "age_grp"))
-
-# Creating totals for both sexes and adding them to the basefile.
-deaths_totals <- deaths_diab %>% group_by(year, age_grp, age_grp2, type) %>% 
-  summarize_at(c("numerator", "denominator", "epop"), sum, na.rm = T) %>% ungroup() %>% 
-  mutate(sex = "All") %>% 
-  create_rates(cats = c("type", "sex"), epop_total = 200000, sex = T)
+  deaths_diab_cleaned <- left_join(deaths_diab, deaths_diab_long) |> #joins the list of types back up with the main data frame
+    create_agegroups() |> #this is used for standardising rates rather than for age splits
+    group_by(year_of_registration, sex, age_grp, death_type, diab_type) |> #calculating the number of deaths per age group, sex, year and death type (underlying/contributory)
+    summarise(numerator = n(), .groups = "drop") |> 
+    rename(year = year_of_registration) |>  #renaming to match lookup
+    complete(sex, year, age_grp, death_type, diab_type, fill = list(numerator = 0))
   
-#Calculating rates for each sex
-deaths_diab_sex <- deaths_diab %>% 
-  create_rates(cats = c("type", "sex"), epop_total = 100000, sex = T)
+  deaths_diab_cleaned <- left_join(deaths_diab_cleaned, population,
+                                   by = c("year", "sex", "age_grp")) #joining data to lookup to get population denominators                                       
 
-deaths_diab_rates <- rbind(deaths_diab_sex, deaths_totals) %>% 
-  #Creating labels for chart
-  mutate(class1 = case_when(type == 'main_diag' & sex == 'All' ~ 'All - underlying',
-                            type == 'main_diag' & sex == '2' ~ 'Female - underlying',
-                            type == 'main_diag' & sex == '1' ~ 'Male - underlying',
-                            type == 'all_diag' & sex == 'All' ~ 'All - contributory',
-                            type == 'all_diag' & sex == '2' ~ 'Female - contributory',
-                            type == 'all_diag' & sex == '1' ~ 'Male - contributory')) %>% 
-  rename(class2 = year) %>% select(class2, class1, numerator, rate)
-
-write_csv(deaths_diab_rates, paste0(output, "diabetes_mortality_chart1.csv"))
+  #Creating numerators and standardised rates for males and females combined
+  deaths_totals <- deaths_diab_cleaned |> group_by(year, age_grp, age_grp2, diab_type, death_type) |> 
+    summarise(across(c(numerator, denominator, epop), sum), .groups = "drop") |> 
+    mutate(sex = "All") |> 
+    create_rates(cats = c("diab_type", "death_type", "sex"), epop_total = 200000, sex = T)
+  
+  #Calculating rates for males and females
+  deaths_diab_sex <- deaths_diab_cleaned |> 
+    create_rates(cats = c("diab_type", "death_type", "sex"), epop_total = 100000, sex = T) |> 
+    mutate(sex = case_when(sex == "1" ~ "Male",
+                     sex == "2" ~ "Female",
+                     TRUE ~ NA))
+   
+  #Join all-sex data back on
+  deaths_diab_cleaned <- rbind(deaths_diab_sex, deaths_totals) |> 
+    rename(Numerator = numerator, 
+           Rate = rate) |> 
+    #Finally pivoting longer so that rates and numerators become one col called measure
+    pivot_longer(cols = c("Numerator", "Rate"), names_to = "measure", values_to = "value") |> 
+    mutate(value =round(value, digits = 1))
+    
+  
+  saveRDS(deaths_diab_cleaned, paste0(output, "/deaths_data_shiny_test.rds"))
+  write.csv(deaths_diab_cleaned, paste0(output, "/deaths_data_shiny_test.csv"), row.names = F)
 
 ##END
