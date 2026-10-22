@@ -154,16 +154,32 @@ data_undersixtyfive <- data_agegroups |>  filter(age_grp == 1) # under 65
 data_sixtyfive_eightyfour <- data_agegroups |>  filter(age_grp == 2) # 65-84
 data_eightyfiveplus <- data_agegroups |>  filter(age_grp == 3) # 85+
 
-# run the create rates function for each cut
-# export in format for website chart update (year, sex, rate in csv file) and save
+#Calculate rates for each age group
+data_undersixtyfive <- create_rates(data_undersixtyfive, epop_total = 8050, sex = TRUE) |> mutate(age_group = "<65")
+data_sixtyfive_eightyfour <- create_rates(data_sixtyfive_eightyfour, epop_total = 17000, sex = TRUE) |> mutate(age_group = "65-84")
+data_eightyfiveplus <- create_rates(data_eightyfiveplus, epop_total = 2500, sex = TRUE) |> mutate(age_group = "85+")
+data_allages <- create_rates(deaths_admissions_scotland, epop_total = 100000, sex = TRUE) |> mutate(age_group = "Total")
 
-all_copd_chart <- create_chart_data(dataset = deaths_admissions_scotland, epop_total = 100000, filename = "all_copd_scotland_chart")
+#Creating final data file for shiny app
 
-undersixtyfive_copd_chart <- create_chart_data(dataset = data_undersixtyfive, epop_total = 80500, filename = "copd_undersixtyfive_chart")
+data_final <- rbind(data_undersixtyfive, data_sixtyfive_eightyfour, data_eightyfiveplus, data_allages)|> 
+  mutate(sex = case_when(sex == 1 ~ "Male",
+                         sex == 2 ~ "Female",
+                         TRUE ~ sex)) |> 
+  tidyr::pivot_longer(cols = c(numerator, rate), names_to = "measure", values_to = "value") |> 
+  mutate(measure = case_when(measure == "rate" ~ "Rate",
+                             measure == "numerator" ~ "Count"))
 
-sixtyfive_eightyfour_copd_chart <- create_chart_data(dataset = data_sixtyfive_eightyfour, epop_total = 17000, filename = "copd_sixtyfive_eightyfour_chart")
 
-eightyfiveplus_copd_chart <- create_chart_data(dataset = data_eightyfiveplus, epop_total = 2500, filename = "copd_eightyfiveplus_chart")
+#Create all sex totals and append
+data_all_sexes <- data_final |> 
+  group_by(year, age_grp) |> 
+  summarise(across(c(numerator, denominator, epop), ~ sum(.x, na.rm = TRUE)), .groups = "drop") |> 
+  mutate(sex = "Total")
+
+data_final <- rbind(data_final, data_all_sexes)
+
+saveRDS(data_final, file.path(data_folder, "Secondary Care", "hospital_admissions_data.rds"))
 
 ###############################################.
 # Part 3 - DEPRIVATION ----
