@@ -144,40 +144,66 @@ deaths_admissions_scotland <- deaths_admissions_scotland |>
 data_agegroups <- deaths_admissions_scotland |>
  # mutate(sex = as.numeric(sex)) |>
   group_by(year, age_grp2, sex) |>
-  select(-age_grp) |>
   summarise(across(where(is.numeric), ~sum(.x, na.rm = TRUE))) |>
-  rename(age_grp = age_grp2) |>
   ungroup()
 
 # Creating datasets for each age group as calculations need to be per age group (different total EPOPs)
-data_undersixtyfive <- data_agegroups |>  filter(age_grp == 1) # under 65
-data_sixtyfive_eightyfour <- data_agegroups |>  filter(age_grp == 2) # 65-84
-data_eightyfiveplus <- data_agegroups |>  filter(age_grp == 3) # 85+
-
-#Calculate rates for each age group
-data_undersixtyfive <- create_rates(data_undersixtyfive, epop_total = 8050, sex = TRUE) |> mutate(age_group = "<65")
-data_sixtyfive_eightyfour <- create_rates(data_sixtyfive_eightyfour, epop_total = 17000, sex = TRUE) |> mutate(age_group = "65-84")
-data_eightyfiveplus <- create_rates(data_eightyfiveplus, epop_total = 2500, sex = TRUE) |> mutate(age_group = "85+")
-data_allages <- create_rates(deaths_admissions_scotland, epop_total = 100000, sex = TRUE) |> mutate(age_group = "Total")
+#Calculating rates for each age group and sex 
+data_final <- rbind(
+  # For <65 group
+  data_agegroups |> #males and females
+    filter(age_grp2 == 1) |>
+    create_rates(cats = c("age_grp2"), epop_total = 80500, sex = TRUE),
+  
+  data_agegroups |> #all sexes
+    filter(age_grp2 == 1) |>
+    create_rates(cats = c("age_grp2"), epop_total = 161000, sex = FALSE) |> 
+    mutate(sex = "Total"),
+  
+  # For 65-84 group
+  data_agegroups |>
+    filter(age_grp2 == 2) |>
+    create_rates(cats = c("age_grp2"), epop_total = 17000, sex = TRUE),
+  
+  data_agegroups |>
+    filter(age_grp2 == 2) |>
+    create_rates(cats = c("age_grp2"), epop_total = 34000, sex = FALSE) |> 
+    mutate(sex = "Total"),
+  
+  # For 85+ group
+  data_agegroups |>
+    filter(age_grp2 == 3) |>
+    create_rates(cats = c("age_grp2"), epop_total = 2500, sex = TRUE),
+  
+  data_agegroups |>
+    filter(age_grp2 == 3) |>
+    create_rates(cats = c("age_grp2"), epop_total = 5000, sex = FALSE) |> 
+    mutate(sex = "Total"),
+  
+  # All ages by sex
+  data_agegroups |>
+    create_rates(epop_total = 100000, sex = TRUE) |> 
+    mutate(age_grp2 = "Total"),
+  
+  data_agegroups |>
+    create_rates(epop_total = 200000, sex = FALSE) |> 
+    mutate(age_grp2 = "Total",
+           sex = "Total"))
 
 #Creating final data file for shiny app
 
-data_final <- rbind(data_undersixtyfive, data_sixtyfive_eightyfour, data_eightyfiveplus, data_allages)|> 
+data_final <- data_final |> 
   mutate(sex = case_when(sex == 1 ~ "Male",
                          sex == 2 ~ "Female",
-                         TRUE ~ sex)) |> 
+                         TRUE ~ sex),
+         age_grp2 = case_when(age_grp2 == 1 ~ "<65",
+                              age_grp2 == 2 ~ "65-84",
+                              age_grp2 == 3 ~ "85+",
+                              TRUE ~ "Total")) |> 
   tidyr::pivot_longer(cols = c(numerator, rate), names_to = "measure", values_to = "value") |> 
   mutate(measure = case_when(measure == "rate" ~ "Rate",
-                             measure == "numerator" ~ "Count"))
-
-
-#Create all sex totals and append
-data_all_sexes <- data_final |> 
-  group_by(year, age_grp) |> 
-  summarise(across(c(numerator, denominator, epop), ~ sum(.x, na.rm = TRUE)), .groups = "drop") |> 
-  mutate(sex = "Total")
-
-data_final <- rbind(data_final, data_all_sexes)
+                             measure == "numerator" ~ "Count")) |> 
+  rename(age_grp = age_grp2)
 
 saveRDS(data_final, file.path(data_folder, "Secondary Care", "hospital_admissions_data.rds"))
 
